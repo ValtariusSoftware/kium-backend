@@ -11,8 +11,9 @@ import { graphqlConfig } from './config/graphql.config'
 import appConfig from './config/app.config'
 import { UsersModule } from './users/users.module'
 // import { AccessLevel, SubscriptionStatus } from './users/entities/user.entity'
-// import { APP_GUARD } from '@nestjs/core'
-// import { AuthGuard } from './auth/guards/auth.guard'
+import { APP_GUARD } from '@nestjs/core'
+import { FirebaseGuard } from './auth/guards/firebase.guard'
+import { FirebaseModule } from './firebase/firebase.module'
 
 @Module({
   imports: [
@@ -32,23 +33,17 @@ import { UsersModule } from './users/users.module'
       inject: [ConfigService],
       useFactory: (configService: ConfigService) =>
         graphqlConfig(configService),
-      // useFactory: (configService: ConfigService) => ({
-      //   ...graphqlConfig(configService),
-      //   // 💡 ESTO ES CRUCIAL para que GraphQL vea los ENUMS
-      //   buildSchemaOptions: {
-      //     orphanedTypes: [AccessLevel, SubscriptionStatus],
-      //   },
-      // }),
     }),
 
     // Módulos de negocio
+    FirebaseModule,
     UsersModule,
   ],
   providers: [
-    // {
-    //   provide: APP_GUARD,
-    //   useClass: AuthGuard,
-    // },
+    {
+      provide: APP_GUARD,
+      useClass: FirebaseGuard,
+    },
   ],
 })
 export class AppModule {}
