@@ -36,3 +36,7 @@ enum AccessLevel {
 type Query {
   users: [User!]!
 }
+
+type Mutation {
+  googleAuth(idToken: String!): User!
+}

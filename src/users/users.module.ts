@@ -9,5 +9,6 @@ import { UsersResolver } from './users.resolver'
   // Importamos la Entidad para que TypeORM sepa cómo manejar la tabla
   imports: [TypeOrmModule.forFeature([User])],
   providers: [UsersService, UsersResolver],
+  exports: [UsersService, TypeOrmModule],
 })
 export class UsersModule {}
