@@ -14,6 +14,7 @@ import { UsersModule } from './users/users.module'
 import { APP_GUARD } from '@nestjs/core'
 import { FirebaseGuard } from './auth/guards/firebase.guard'
 import { FirebaseModule } from './firebase/firebase.module'
+import { AuthModule } from './auth/auth.module'
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { FirebaseModule } from './firebase/firebase.module'
     // Módulos de negocio
     FirebaseModule,
     UsersModule,
+    AuthModule,
   ],
   providers: [
     {
