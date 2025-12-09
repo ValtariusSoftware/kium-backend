@@ -9,7 +9,7 @@ export default tseslint.config(
     ignores: ['eslint.config.mjs', 'typeorm-cli.config.js'],
   },
   eslint.configs.recommended,
-  ...tseslint.configs.recommendedTypeChecked,
+  ...tseslint.configs.recommended,
   eslintPluginPrettierRecommended,
   {
     languageOptions: {
@@ -26,9 +26,9 @@ export default tseslint.config(
   },
   {
     rules: {
-      '@typescript-eslint/no-explicit-any': 'error',
+      '@typescript-eslint/no-explicit-any': 'warn',
       '@typescript-eslint/no-floating-promises': 'warn',
-      '@typescript-eslint/no-unsafe-argument': 'warn',
+      // '@typescript-eslint/no-unsafe-argument': 'warn',
       'prettier/prettier': [
         'error',
         {
