@@ -16,4 +16,10 @@ export default () => ({
     privateKey: process.env.FIREBASE_PRIVATE_KEY,
     clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
   },
+  jwt: {
+    secret: process.env.JWT_SECRET || 'SECRET',
+    refreshSecret: process.env.JWT_JWT_REFRESH_SECRET || 'REFRESH_SECRET',
+    accessExpiration: process.env.JWT_ACCESS_EXPIRATION || '1h',
+    refreshExpiration: process.env.JWT_REFRESH_EXPIRATION || '7d',
+  },
 })

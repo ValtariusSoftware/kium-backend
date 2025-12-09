@@ -33,10 +33,33 @@ enum AccessLevel {
   PRO
 }
 
+type AuthPayload {
+  """El usuario autenticado/creado"""
+  user: User!
+
+  """Token JWT de corta duración (para cabecera Authorization)"""
+  accessToken: String!
+
+  """Token de larga duración (para renovar el Access Token)"""
+  refreshToken: String!
+}
+
+type RefreshPayload {
+  """Nuevo Token de acceso JWT de corta duración."""
+  accessToken: String!
+
+  """Nuevo Token de refresco JWT de larga duración."""
+  refreshToken: String!
+}
+
 type Query {
   users: [User!]!
 }
 
 type Mutation {
-  googleAuth(idToken: String!): User!
+  """Autenticación con el ID Token de Google/Firebase."""
+  googleAuth(idToken: String!): AuthPayload!
+
+  """Usa el Refresh Token para obtener un nuevo Access Token."""
+  refreshAccessToken(refreshToken: String!): RefreshPayload!
 }

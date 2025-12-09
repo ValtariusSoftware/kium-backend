@@ -3,7 +3,7 @@
 import {
   Injectable,
   Logger,
-  InternalServerErrorException, // 💡 IMPORTACIÓN REQUERIDA para lanzar la excepción
+  InternalServerErrorException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
@@ -30,6 +30,11 @@ export class UsersService {
   // Método para buscar todos los usuarios
   async findAll(): Promise<User[]> {
     return this.usersRepository.find()
+  }
+
+  async findOneById(id: string): Promise<User | null> {
+    // Se usa findOne por si hay filtros ocultos (como soft-delete)
+    return this.usersRepository.findOne({ where: { id } })
   }
 
   /**
