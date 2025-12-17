@@ -2,6 +2,73 @@
 # THIS FILE WAS AUTOMATICALLY GENERATED (DO NOT MODIFY)
 # ------------------------------------------------------
 
+type Item {
+  id: ID!
+  name: String!
+  type: ItemType!
+  stock: Float!
+  baseUnit: BaseUnit!
+  conversionToBaseQty: Float!
+  minStockAlert: Float
+  costPrice: Float
+  salePrice: Float
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
+enum ItemType {
+  RESELL_PRODUCT
+  FINAL_PRODUCT
+  INGREDIENT
+}
+
+enum BaseUnit {
+  UNIT
+  PACK
+  BOX
+  ROLL
+  BAG
+  PALLET
+  METER
+  CENTIMETER
+  MILLIMETER
+  FOOT
+  YARD
+  SQUARE_METER
+  KILOGRAM
+  GRAM
+  MILLIGRAM
+  POUND
+  OUNCE
+  LITER
+  MILLILITER
+  GALLON
+  FL_OUNCE
+  CUBIC_METER
+  HOUR
+  DAY
+}
+
+"""
+A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
+"""
+scalar DateTime
+
+type RecipeIngredient {
+  id: ID!
+  quantityRequired: Float!
+  unitOfMeasure: BaseUnit!
+  notes: String
+}
+
+type Recipe {
+  id: ID!
+  yieldQuantity: Float!
+  ingredients: [RecipeIngredient!]!
+  createdAt: DateTime!
+  updatedAt: DateTime!
+}
+
 type User {
   id: ID!
   username: String!
@@ -13,11 +80,6 @@ type User {
   createdAt: DateTime!
   updatedAt: DateTime!
 }
-
-"""
-A date-time string at UTC, such as 2019-12-03T09:54:33Z, compliant with the date-time format.
-"""
-scalar DateTime
 
 """The status of the user's subscription."""
 enum SubscriptionStatus {
@@ -52,8 +114,36 @@ type RefreshPayload {
   refreshToken: String!
 }
 
+type InventoryTransaction {
+  id: ID!
+  item: Item
+  type: TransactionType!
+  quantity: Float!
+  unitCostSnapshot: Float!
+  documentRef: String
+  notes: String
+  createdAt: DateTime!
+}
+
+"""Tipos de movimientos de inventario soportados por el sistema."""
+enum TransactionType {
+  INITIAL_INVENTORY
+  PURCHASE
+  PRODUCTION_IN
+  ADJUSTMENT_IN
+  SALE
+  CONSUMPTION
+  PRODUCTION_OUT
+  ADJUSTMENT_OUT
+}
+
 type Query {
   users: [User!]!
+  items: [Item!]!
+
+  """Obtiene la receta por el ID del producto final."""
+  recipeByProduct(finalProductId: ID!): Recipe!
+  inventoryTransactionsByItem(itemId: ID!): [InventoryTransaction!]!
 }
 
 type Mutation {
@@ -62,4 +152,66 @@ type Mutation {
 
   """Usa el Refresh Token para obtener un nuevo Access Token."""
   refreshAccessToken(refreshToken: String!): RefreshPayload!
+  createItem(createItemInput: CreateItemInput!): Item!
+
+  """Ejecuta una producción, ajustando stock."""
+  produceItem(produceItemInput: ProduceItemInput!): Item!
+
+  """Crea una nueva receta para un FINAL_PRODUCT."""
+  createRecipe(createRecipeInput: CreateRecipeInput!): Recipe!
+
+  """
+  Registra un movimiento de stock (Compra, Venta, Ajuste, Producción) y actualiza el stock total del Item.
+  """
+  registerInventoryMovement(registerTransactionInput: RegisterTransactionInput!): InventoryTransaction!
+}
+
+input CreateItemInput {
+  name: String!
+  type: ItemType!
+  stock: Float!
+  baseUnit: BaseUnit!
+  conversionToBaseQty: Float!
+  minStockAlert: Float
+  costPrice: Float
+  salePrice: Float
+}
+
+input ProduceItemInput {
+  recipeId: ID!
+  quantityToProduce: Float!
+}
+
+input CreateRecipeInput {
+  finalProductId: ID!
+  yieldQuantity: Float!
+  ingredients: [CreateRecipeIngredientInput!]!
+}
+
+input CreateRecipeIngredientInput {
+  ingredientItemId: ID!
+  quantityRequired: Float!
+  unitOfMeasure: BaseUnit!
+}
+
+input RegisterTransactionInput {
+  """ID del Item afectado por la transacción."""
+  itemId: ID!
+
+  """Tipo de movimiento (PURCHASE, SALE, ADJUSTMENT_OUT, etc.)."""
+  type: TransactionType!
+
+  """Cantidad del movimiento. Positivo para entrada, Negativo para salida."""
+  quantity: Float!
+
+  """
+  Costo unitario del ítem en esta transacción. Obligatorio para entradas de costo (PURCHASE).
+  """
+  unitCostSnapshot: Float
+
+  """Referencia a documento (Factura, Recibo, ID de Venta, etc.)."""
+  documentRef: String
+
+  """Notas u observación para el movimiento (ej. Razón de ajuste)."""
+  notes: String
 }

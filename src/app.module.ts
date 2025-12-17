@@ -13,6 +13,9 @@ import { APP_GUARD } from '@nestjs/core'
 import { JwtGuard } from './auth/guards/jwt.guard'
 import { FirebaseModule } from './firebase/firebase.module'
 import { AuthModule } from './auth/auth.module'
+import { ItemsModule } from './items/items.module'
+import { RecipesModule } from './recipes/recipes.module'
+import { InventoryTransactionsModule } from './inventory-transactions/inventory-transactions.module'
 // 🚨 ELIMINAR ESTA LÍNEA -> import { JwtStrategy } from './auth/strategies/jwt.strategy'
 
 @Module({
@@ -34,6 +37,9 @@ import { AuthModule } from './auth/auth.module'
     FirebaseModule,
     UsersModule,
     AuthModule,
+    ItemsModule,
+    RecipesModule,
+    InventoryTransactionsModule,
   ],
   providers: [
     {

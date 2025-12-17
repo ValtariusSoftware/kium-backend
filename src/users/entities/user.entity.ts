@@ -6,8 +6,11 @@ import {
   PrimaryColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  OneToMany,
 } from 'typeorm'
 import { ObjectType, Field, ID, registerEnumType } from '@nestjs/graphql' // 💡 IMPORTAMOS registerEnumType
+import { Item } from 'src/items/entities/item.entity'
+import { Recipe } from 'src/recipes/entities/recipe.entity'
 
 // 1. Enum para el estado de la suscripción
 export enum SubscriptionStatus {
@@ -97,4 +100,12 @@ export class User {
   @UpdateDateColumn({ type: 'timestamp', name: 'updated_at' })
   @Field()
   updatedAt: Date // Nombre de la propiedad en TypeScript (camelCase)
+
+  // 💡 AÑADIR ESTA RELACIÓN ONE-TO-MANY
+  // Un Usuario puede tener muchos Items
+  @OneToMany(() => Item, (item) => item.user)
+  items: Item[] // Ahora la propiedad 'items' existe en User.
+
+  @OneToMany(() => Recipe, (recipe) => recipe.user)
+  recipes: Recipe[]
 }
