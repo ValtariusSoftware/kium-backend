@@ -35,7 +35,8 @@ export class Recipe {
   @JoinColumn({ name: 'user_id' })
   user: User
 
-  @Column('uuid', { name: 'user_id' })
+  @Column({ type: 'varchar', length: 255, name: 'user_id' })
+  @Field()
   userId: string
 
   // Cantidad de Producto Final que se produce al completar esta receta (ej. 1 litro de helado)

@@ -163,57 +163,80 @@ export class ItemsService {
     await queryRunner.startTransaction()
 
     try {
-      // 1. Obtener la Receta (y verificar propiedad)
+      // 1. Obtener la Receta con todas sus relaciones
       const recipe = await this.recipesService.findOne(input.recipeId, userId)
       if (!recipe) {
-        throw new NotFoundException(
-          'Receta no encontrada o no pertenece al usuario.',
-        )
+        throw new NotFoundException('Receta no encontrada.')
       }
 
-      // 2. Calcular el factor de producción real
+      // 2. Definir factor de escala y acumulador de costo
       const factor = input.quantityToProduce / recipe.yieldQuantity
+      let totalProductionCost = 0
 
-      // 3. Procesar Ingredientes (DECREMENTAR STOCK)
+      // --- 🛡️ PASO DE VALIDACIÓN PREVIA Y CÁLCULO DE COSTO TOTAL ---
       for (const ingredient of recipe.ingredients) {
-        // Cantidad real a consumir (ej: 0.5kg * factor)
-        const quantityToConsume = ingredient.quantityRequired * factor
+        const baseQtyToConsume = ingredient.quantityRequired * factor
+        const stockQtyToConsume =
+          baseQtyToConsume / ingredient.ingredientItem.conversionToBaseQty
 
-        // Utilizamos el query runner para la actualización dentro de la transacción
-        const updateResult = await queryRunner.manager.increment(
-          Item,
-          { id: ingredient.ingredientItemId, userId }, // WHERE
-          'stock', // Columna
-          -quantityToConsume / ingredient.ingredientItem.conversionToBaseQty, // Valor (negativo para decrementar)
-          // ⚠️ NOTA: El decremento debe hacerse en la unidad de stock del item, NO en la unidad base.
-          // El factor de conversión lo usamos para asegurar que el descuento sea preciso.
-        )
+        // Convertimos a Number porque los tipos 'numeric' de Postgres llegan como string
+        const currentStock = Number(ingredient.ingredientItem.stock)
 
-        if (updateResult.affected === 0) {
-          // Esto puede significar que el stock es insuficiente (si tienes un CHECK constraint) o el ítem no existe.
-          // Aquí se pueden añadir validaciones de stock insuficientes (Paso 3, query de validación).
+        if (currentStock < stockQtyToConsume) {
           throw new ForbiddenException(
-            `Stock insuficiente para el ingrediente: ${ingredient.ingredientItem.name}`,
+            `Stock insuficiente para ${ingredient.ingredientItem.name}. ` +
+              `Requerido: ${stockQtyToConsume.toFixed(2)}, Disponible: ${currentStock.toFixed(2)}`,
           )
         }
+
+        // 💰 Acumular costo: (Cantidad de stock a usar * Costo unitario del ingrediente)
+        const ingredientUnitCost = Number(
+          ingredient.ingredientItem.costPrice || 0,
+        )
+        totalProductionCost += stockQtyToConsume * ingredientUnitCost
       }
 
-      // 4. Procesar Producto Final (INCREMENTAR STOCK)
-      const quantityToProduce =
+      // --- 3. PROCESAR CONSUMO DE INGREDIENTES ---
+      for (const ingredient of recipe.ingredients) {
+        const baseQtyToConsume = ingredient.quantityRequired * factor
+        const stockQtyToConsume =
+          baseQtyToConsume / ingredient.ingredientItem.conversionToBaseQty
+
+        await this.inventoryTransactionsService.registerMovement(
+          userId,
+          {
+            itemId: ingredient.ingredientItemId,
+            type: TransactionType.CONSUMPTION,
+            quantity: -stockQtyToConsume, // Valor negativo para descontar
+            documentRef: `PROD-RECIPE-${recipe.id}`,
+            notes: `Consumo para producir ${input.quantityToProduce} unidades de ${recipe.finalProduct.name}.`,
+            unitCostSnapshot: Number(ingredient.ingredientItem.costPrice || 0),
+          },
+          queryRunner,
+        )
+      }
+
+      // --- 4. PROCESAR ENTRADA DE PRODUCTO FINAL ---
+      const stockQtyProduced =
         input.quantityToProduce / recipe.finalProduct.conversionToBaseQty
 
-      const updatedFinalProductResult = await queryRunner.manager.increment(
-        Item,
-        { id: recipe.finalProductId, userId }, // WHERE
-        'stock',
-        quantityToProduce, // Valor positivo
+      // Costo unitario = Costo total de ingredientes / Cantidad de producto final
+      const unitCostProduced = totalProductionCost / stockQtyProduced
+
+      await this.inventoryTransactionsService.registerMovement(
+        userId,
+        {
+          itemId: recipe.finalProductId,
+          type: TransactionType.PRODUCTION_IN,
+          quantity: stockQtyProduced, // Valor positivo para sumar
+          unitCostSnapshot: unitCostProduced, // 👈 Costo calculado
+          documentRef: `PROD-RECIPE-${recipe.id}`,
+          notes: `Producción finalizada. Costo total de insumos: ${totalProductionCost.toFixed(2)}`,
+        },
+        queryRunner,
       )
 
-      if (updatedFinalProductResult.affected === 0) {
-        throw new NotFoundException('Producto final no encontrado.')
-      }
-
-      // 5. Commit de la Transacción
+      // 5. Commit de la transacción
       await queryRunner.commitTransaction()
 
       // 6. Devolver el ítem actualizado
@@ -221,21 +244,13 @@ export class ItemsService {
         where: { id: recipe.finalProductId },
       })
 
-      if (!updatedItem) {
-        // Si llegamos aquí, algo está terriblemente mal en la DB/TypeORM,
-        // pero manejamos el caso 'null'.
-        throw new NotFoundException(
-          'Error fatal: El producto final no se encontró tras la producción.',
-        )
-      }
-
-      return updatedItem // <-- Ahora devuelve un Item no nulo
+      return updatedItem!
     } catch (err) {
-      // Si algo falla, hacer ROLLBACK
+      // Si algo falla (validación o DB), volvemos atrás
       await queryRunner.rollbackTransaction()
       throw err
     } finally {
-      // Siempre liberar el query runner
+      // Siempre liberar el queryRunner
       await queryRunner.release()
     }
   }

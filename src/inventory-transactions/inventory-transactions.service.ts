@@ -95,5 +95,13 @@ export class InventoryTransactionsService {
     })
   }
 
-  // Más métodos: generar reportes, calcular costos (FIFO/Promedio) se añadirían aquí
+  async findByItem(
+    itemId: string,
+    userId: string,
+  ): Promise<InventoryTransaction[]> {
+    return this.transactionRepository.find({
+      where: { itemId, userId },
+      order: { createdAt: 'DESC' }, // El más reciente primero
+    })
+  }
 }
