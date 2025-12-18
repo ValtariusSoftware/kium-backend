@@ -4,6 +4,7 @@ import { InventoryTransaction } from './entities/inventory-transaction.entity'
 import { RegisterTransactionInput } from './dto/register-transaction.input'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { User } from 'src/users/entities/user.entity'
+import { TransactionHistoryItem } from './dto/transaction-history.output'
 
 @Resolver(() => InventoryTransaction)
 export class InventoryTransactionsResolver {
@@ -37,5 +38,11 @@ export class InventoryTransactionsResolver {
     return this.inventoryTransactionsService.findAllByItem(itemId, user.id)
   }
 
-  // (Aquí se agregarían otras mutaciones específicas como registerPurchase, registerLoss, etc., que llamarían al service)
+  @Query(() => [TransactionHistoryItem], { name: 'itemTransactionHistory' })
+  async getHistory(
+    @Args('itemId', { type: () => ID }) itemId: string,
+    @CurrentUser() user: User, // Tu decorador de usuario
+  ): Promise<InventoryTransaction[]> {
+    return this.inventoryTransactionsService.findByItem(itemId, user.id)
+  }
 }

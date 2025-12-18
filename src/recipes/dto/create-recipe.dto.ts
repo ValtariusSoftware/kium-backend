@@ -6,6 +6,8 @@ import {
   IsArray,
   ValidateNested,
   IsEnum,
+  IsString,
+  IsOptional,
 } from 'class-validator'
 import { Type } from 'class-transformer'
 import { BaseUnit } from '../../items/entities/item.entity'
@@ -25,6 +27,11 @@ export class CreateRecipeIngredientInput {
   @Field(() => BaseUnit)
   @IsEnum(BaseUnit)
   unitOfMeasure: BaseUnit // La unidad base (ej. LITER, KILOGRAM)
+
+  @Field({ nullable: true })
+  @IsString()
+  @IsOptional()
+  notes?: string
 }
 
 // 2. DTO principal para la Receta

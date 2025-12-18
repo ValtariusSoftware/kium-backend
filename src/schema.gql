@@ -63,6 +63,7 @@ type RecipeIngredient {
 
 type Recipe {
   id: ID!
+  userId: String!
   yieldQuantity: Float!
   ingredients: [RecipeIngredient!]!
   createdAt: DateTime!
@@ -137,6 +138,16 @@ enum TransactionType {
   ADJUSTMENT_OUT
 }
 
+type TransactionHistoryItem {
+  id: ID!
+  type: TransactionType!
+  quantity: Float!
+  unitCostSnapshot: Float!
+  documentRef: String
+  notes: String
+  createdAt: DateTime!
+}
+
 type Query {
   users: [User!]!
   items: [Item!]!
@@ -144,6 +155,7 @@ type Query {
   """Obtiene la receta por el ID del producto final."""
   recipeByProduct(finalProductId: ID!): Recipe!
   inventoryTransactionsByItem(itemId: ID!): [InventoryTransaction!]!
+  itemTransactionHistory(itemId: ID!): [TransactionHistoryItem!]!
 }
 
 type Mutation {
@@ -192,6 +204,7 @@ input CreateRecipeIngredientInput {
   ingredientItemId: ID!
   quantityRequired: Float!
   unitOfMeasure: BaseUnit!
+  notes: String
 }
 
 input RegisterTransactionInput {
