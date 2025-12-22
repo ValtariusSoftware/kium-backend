@@ -16,6 +16,9 @@ export class TransactionHistoryItem {
   @Field(() => Float)
   unitCostSnapshot: number
 
+  @Field(() => Float, { nullable: true })
+  salePriceSnapshot?: number
+
   @Field({ nullable: true })
   documentRef?: string
 

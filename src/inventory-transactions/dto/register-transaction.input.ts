@@ -40,6 +40,15 @@ export class RegisterTransactionInput {
   @IsOptional()
   unitCostSnapshot?: number
 
+  @Field(() => Float, {
+    description:
+      'Precio de venta unitario. Obligatorio para transacciones de tipo SALE.',
+    nullable: true,
+  })
+  @IsNumber()
+  @IsOptional()
+  salePriceSnapshot?: number
+
   @Field({
     nullable: true,
     description: 'Referencia a documento (Factura, Recibo, ID de Venta, etc.).',

@@ -14,6 +14,7 @@ import { RecipesService } from 'src/recipes/recipes.service'
 import { ProduceItemInput } from './dto/produce-item.dto'
 import { InventoryTransactionsService } from 'src/inventory-transactions/inventory-transactions.service'
 import { TransactionType } from 'src/inventory-transactions/enums/transaction-type.enum'
+import { AdjustStockInput } from './dto/adjust-stock.input'
 
 @Injectable()
 export class ItemsService {
@@ -179,7 +180,6 @@ export class ItemsService {
         const stockQtyToConsume =
           baseQtyToConsume / ingredient.ingredientItem.conversionToBaseQty
 
-        // Convertimos a Number porque los tipos 'numeric' de Postgres llegan como string
         const currentStock = Number(ingredient.ingredientItem.stock)
 
         if (currentStock < stockQtyToConsume) {
@@ -189,7 +189,7 @@ export class ItemsService {
           )
         }
 
-        // 💰 Acumular costo: (Cantidad de stock a usar * Costo unitario del ingrediente)
+        // 💰 Acumular costo basado en el precio de costo actual del ingrediente
         const ingredientUnitCost = Number(
           ingredient.ingredientItem.costPrice || 0,
         )
@@ -207,7 +207,7 @@ export class ItemsService {
           {
             itemId: ingredient.ingredientItemId,
             type: TransactionType.CONSUMPTION,
-            quantity: -stockQtyToConsume, // Valor negativo para descontar
+            quantity: stockQtyToConsume,
             documentRef: `PROD-RECIPE-${recipe.id}`,
             notes: `Consumo para producir ${input.quantityToProduce} unidades de ${recipe.finalProduct.name}.`,
             unitCostSnapshot: Number(ingredient.ingredientItem.costPrice || 0),
@@ -223,13 +223,21 @@ export class ItemsService {
       // Costo unitario = Costo total de ingredientes / Cantidad de producto final
       const unitCostProduced = totalProductionCost / stockQtyProduced
 
+      // 🔑 NUEVO: Actualizar la ficha maestra del Item con el nuevo costo calculado
+      // Esto hará que las futuras VENTAS lean este costo y el reporte sea real.
+      await queryRunner.manager.update(
+        Item,
+        { id: recipe.finalProductId },
+        { costPrice: unitCostProduced },
+      )
+
       await this.inventoryTransactionsService.registerMovement(
         userId,
         {
           itemId: recipe.finalProductId,
           type: TransactionType.PRODUCTION_IN,
-          quantity: stockQtyProduced, // Valor positivo para sumar
-          unitCostSnapshot: unitCostProduced, // 👈 Costo calculado
+          quantity: stockQtyProduced,
+          unitCostSnapshot: unitCostProduced,
           documentRef: `PROD-RECIPE-${recipe.id}`,
           notes: `Producción finalizada. Costo total de insumos: ${totalProductionCost.toFixed(2)}`,
         },
@@ -239,19 +247,68 @@ export class ItemsService {
       // 5. Commit de la transacción
       await queryRunner.commitTransaction()
 
-      // 6. Devolver el ítem actualizado
+      // 6. Devolver el ítem actualizado (ya tendrá el costPrice y el stock nuevos)
       const updatedItem = await this.itemsRepository.findOne({
         where: { id: recipe.finalProductId },
       })
 
       return updatedItem!
     } catch (err) {
-      // Si algo falla (validación o DB), volvemos atrás
       await queryRunner.rollbackTransaction()
       throw err
     } finally {
-      // Siempre liberar el queryRunner
       await queryRunner.release()
     }
+  }
+  /**
+   * Realiza un ajuste manual de stock para un ítem.
+   */
+  async adjustStock(userId: string, input: AdjustStockInput): Promise<Item> {
+    const queryRunner = this.dataSource.createQueryRunner()
+    await queryRunner.connect()
+    await queryRunner.startTransaction()
+
+    try {
+      const item = await this.findOne(input.itemId, userId)
+      if (!item) throw new NotFoundException('Ítem no encontrado.')
+
+      // 🔑 Simplificamos: El frontend ya nos manda el tipo correcto y la cantidad
+      // Nos aseguramos de mandar la cantidad como absoluta por si el frontend mandó un menos
+      const absoluteQuantity = Math.abs(input.quantity)
+
+      await this.inventoryTransactionsService.registerMovement(
+        userId,
+        {
+          itemId: item.id,
+          type: input.type, // 👈 Usamos el tipo que viene del input (ADJUSTMENT_IN/OUT)
+          quantity: absoluteQuantity, // 👈 Siempre positivo
+          documentRef: 'MANUAL-ADJUST',
+          notes: input.reason || 'Ajuste manual de inventario.',
+          unitCostSnapshot: item.costPrice || 0,
+        },
+        queryRunner,
+      )
+
+      await queryRunner.commitTransaction()
+      return (await this.itemsRepository.findOne({ where: { id: item.id } }))!
+    } catch (err) {
+      await queryRunner.rollbackTransaction()
+      throw err
+    } finally {
+      await queryRunner.release()
+    }
+  }
+
+  /**
+   * Obtiene la lista de ítems cuyo stock está por debajo del límite de alerta.
+   */
+  async getLowStockItems(userId: string): Promise<Item[]> {
+    return this.itemsRepository
+      .createQueryBuilder('item')
+      .where('item.userId = :userId', { userId })
+      .andWhere('item.minStockAlert IS NOT NULL')
+      .andWhere('item.stock <= item.minStockAlert')
+      .orderBy('item.stock', 'ASC') // Priorizar los que tienen menos
+      .getMany()
   }
 }

@@ -28,6 +28,17 @@ void bootstrap()
 
 /*
 
+Opción A: Costo Promedio Ponderado (CPP): Ir un paso más allá en las finanzas. Si compras harina a distintos precios, el sistema recalcula el costo medio para que tus márgenes de ganancia sean exactos y no dependan solo del último precio cargado.
+
+Opción B: Dashboard de Stock Crítico: Crear una vista (Query) que alerte al usuario qué ingredientes están por debajo del minStockAlert. Es la herramienta principal para saber qué hay que salir a comprar mañana mismo.
+
+ESta la B ya esta, pero habria que preguntar si solo se enviara y se pintara o se crearan notificaciones push.
+
+Ver ultima respuesta Gemini para ver y analizar ganancias.
+
+Token leído de DataStore (Inicio): 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzY2MTc3Mzc0LCJleHAiOjE3NjYxODA5NzR9.oJr2XAb2k_wadyX4JAPr8Eg2r85fYIBEbZRjKJK0F0o...' (Length: 177)
+
+
 
 
 */

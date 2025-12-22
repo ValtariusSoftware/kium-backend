@@ -5,6 +5,7 @@ import { CreateItemInput } from './dto/create-item.dto'
 import { User } from '../users/entities/user.entity'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { ProduceItemInput } from './dto/produce-item.dto'
+import { AdjustStockInput } from './dto/adjust-stock.input'
 
 @Resolver(() => Item)
 export class ItemsResolver {
@@ -36,5 +37,18 @@ export class ItemsResolver {
     // Necesitas implementar el método 'produce' en el service.
     // Asumimos que devuelve el ítem (Producto Final) actualizado.
     return this.itemsService.produce(user.id, produceItemInput)
+  }
+
+  @Mutation(() => Item, { name: 'adjustItemStock' })
+  async adjustStock(
+    @Args('adjustStockInput') adjustStockInput: AdjustStockInput,
+    @CurrentUser() user: User,
+  ): Promise<Item> {
+    return this.itemsService.adjustStock(user.id, adjustStockInput)
+  }
+
+  @Query(() => [Item], { name: 'lowStockReport' })
+  async getLowStockReport(@CurrentUser() user: User): Promise<Item[]> {
+    return this.itemsService.getLowStockItems(user.id)
   }
 }
