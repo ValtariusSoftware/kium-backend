@@ -48,6 +48,17 @@ export class InventoryTransaction {
   @Field(() => Float)
   unitCostSnapshot: number
 
+  // NUEVO CAMPO: Precio de venta al momento de la transacción
+  @Column('decimal', {
+    scale: 4,
+    precision: 10,
+    name: 'sale_price_snapshot',
+    nullable: true,
+    default: 0,
+  })
+  @Field(() => Float, { nullable: true })
+  salePriceSnapshot?: number
+
   // 💡 CORRECCIÓN: Añadimos () => String explícitamente y usamos ?:
   @Column('varchar', { length: 255, nullable: true, name: 'document_ref' })
   @Field(() => String, { nullable: true })

@@ -117,10 +117,11 @@ type RefreshPayload {
 
 type InventoryTransaction {
   id: ID!
-  item: Item
+  item: Item!
   type: TransactionType!
   quantity: Float!
   unitCostSnapshot: Float!
+  salePriceSnapshot: Float
   documentRef: String
   notes: String
   createdAt: DateTime!
@@ -143,19 +144,40 @@ type TransactionHistoryItem {
   type: TransactionType!
   quantity: Float!
   unitCostSnapshot: Float!
+  salePriceSnapshot: Float
   documentRef: String
   notes: String
   createdAt: DateTime!
 }
 
+type FinancialDataPoint {
+  label: String!
+  revenue: Float!
+  cost: Float!
+  losses: Float!
+  netProfit: Float!
+}
+
+type FinancialReportResponse {
+  data: [FinancialDataPoint!]!
+  totalNetProfit: Float!
+}
+
 type Query {
   users: [User!]!
   items: [Item!]!
+  lowStockReport: [Item!]!
 
   """Obtiene la receta por el ID del producto final."""
   recipeByProduct(finalProductId: ID!): Recipe!
   inventoryTransactionsByItem(itemId: ID!): [InventoryTransaction!]!
   itemTransactionHistory(itemId: ID!): [TransactionHistoryItem!]!
+  financialReport(startDate: DateTime!, endDate: DateTime!, groupBy: ReportGroupBy!): FinancialReportResponse!
+}
+
+enum ReportGroupBy {
+  DAY
+  MONTH
 }
 
 type Mutation {
@@ -168,6 +190,7 @@ type Mutation {
 
   """Ejecuta una producción, ajustando stock."""
   produceItem(produceItemInput: ProduceItemInput!): Item!
+  adjustItemStock(adjustStockInput: AdjustStockInput!): Item!
 
   """Crea una nueva receta para un FINAL_PRODUCT."""
   createRecipe(createRecipeInput: CreateRecipeInput!): Recipe!
@@ -192,6 +215,13 @@ input CreateItemInput {
 input ProduceItemInput {
   recipeId: ID!
   quantityToProduce: Float!
+}
+
+input AdjustStockInput {
+  itemId: ID!
+  quantity: Float!
+  type: TransactionType!
+  reason: String
 }
 
 input CreateRecipeInput {
@@ -221,6 +251,9 @@ input RegisterTransactionInput {
   Costo unitario del ítem en esta transacción. Obligatorio para entradas de costo (PURCHASE).
   """
   unitCostSnapshot: Float
+
+  """Precio de venta unitario. Obligatorio para transacciones de tipo SALE."""
+  salePriceSnapshot: Float
 
   """Referencia a documento (Factura, Recibo, ID de Venta, etc.)."""
   documentRef: String
