@@ -6,7 +6,7 @@ import {
   forwardRef,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, DataSource } from 'typeorm'
+import { Repository, DataSource, QueryRunner } from 'typeorm'
 import { Item } from './entities/item.entity'
 import { AccessLevel } from '../users/entities/user.entity' // Asumiendo que esta es la ruta correcta
 import { CreateItemInput } from './dto/create-item.dto'
@@ -15,6 +15,7 @@ import { ProduceItemInput } from './dto/produce-item.dto'
 import { InventoryTransactionsService } from 'src/inventory-transactions/inventory-transactions.service'
 import { TransactionType } from 'src/inventory-transactions/enums/transaction-type.enum'
 import { AdjustStockInput } from './dto/adjust-stock.input'
+import { GraphQLError } from 'graphql'
 
 @Injectable()
 export class ItemsService {
@@ -158,23 +159,31 @@ export class ItemsService {
    * Ejecuta la producción de un Producto Final, ajustando los stocks de ingredientes
    * y el producto final dentro de una transacción.
    */
-  async produce(userId: string, input: ProduceItemInput): Promise<Item> {
-    const queryRunner = this.dataSource.createQueryRunner()
-    await queryRunner.connect()
-    await queryRunner.startTransaction()
+  async produce(
+    userId: string,
+    input: ProduceItemInput,
+    externalRunner?: QueryRunner,
+  ): Promise<Item> {
+    const queryRunner = externalRunner || this.dataSource.createQueryRunner()
+
+    if (!externalRunner) {
+      await queryRunner.connect()
+      await queryRunner.startTransaction()
+    }
 
     try {
-      // 1. Obtener la Receta con todas sus relaciones
       const recipe = await this.recipesService.findOne(input.recipeId, userId)
+
       if (!recipe) {
         throw new NotFoundException('Receta no encontrada.')
       }
 
-      // 2. Definir factor de escala y acumulador de costo
       const factor = input.quantityToProduce / recipe.yieldQuantity
       let totalProductionCost = 0
 
-      // --- 🛡️ PASO DE VALIDACIÓN PREVIA Y CÁLCULO DE COSTO TOTAL ---
+      // --- 🛡️ 1. PASO DE VALIDACIÓN PREVIA (STOCK COMPLETO) ---
+      const missingIngredients: string[] = []
+
       for (const ingredient of recipe.ingredients) {
         const baseQtyToConsume = ingredient.quantityRequired * factor
         const stockQtyToConsume =
@@ -183,25 +192,37 @@ export class ItemsService {
         const currentStock = Number(ingredient.ingredientItem.stock)
 
         if (currentStock < stockQtyToConsume) {
-          throw new ForbiddenException(
-            `Stock insuficiente para ${ingredient.ingredientItem.name}. ` +
-              `Requerido: ${stockQtyToConsume.toFixed(2)}, Disponible: ${currentStock.toFixed(2)}`,
-          )
+          missingIngredients.push(ingredient.ingredientItem.name)
         }
-
-        // 💰 Acumular costo basado en el precio de costo actual del ingrediente
-        const ingredientUnitCost = Number(
-          ingredient.ingredientItem.costPrice || 0,
-        )
-        totalProductionCost += stockQtyToConsume * ingredientUnitCost
       }
 
-      // --- 3. PROCESAR CONSUMO DE INGREDIENTES ---
+      // Si falta aunque sea un ingrediente, disparamos el error con la lista completa
+      if (missingIngredients.length > 0) {
+        throw new GraphQLError(
+          `Faltan ingredientes para producir ${recipe.finalProduct.name}`,
+          {
+            extensions: {
+              code: 'INSUFFICIENT_INGREDIENTS',
+              httpStatus: 400,
+              ingredients: missingIngredients,
+            },
+          },
+        )
+      }
+
+      // --- 2. CÁLCULO DE COSTO Y CONSUMO ---
+      // Si llegamos aquí, sabemos que hay stock suficiente de todo
       for (const ingredient of recipe.ingredients) {
         const baseQtyToConsume = ingredient.quantityRequired * factor
         const stockQtyToConsume =
           baseQtyToConsume / ingredient.ingredientItem.conversionToBaseQty
 
+        const ingredientUnitCost = Number(
+          ingredient.ingredientItem.costPrice || 0,
+        )
+        totalProductionCost += stockQtyToConsume * ingredientUnitCost
+
+        // Registrar movimiento de salida (CONSUMPTION)
         await this.inventoryTransactionsService.registerMovement(
           userId,
           {
@@ -210,27 +231,27 @@ export class ItemsService {
             quantity: stockQtyToConsume,
             documentRef: `PROD-RECIPE-${recipe.id}`,
             notes: `Consumo para producir ${input.quantityToProduce} unidades de ${recipe.finalProduct.name}.`,
-            unitCostSnapshot: Number(ingredient.ingredientItem.costPrice || 0),
+            unitCostSnapshot: ingredientUnitCost,
           },
           queryRunner,
         )
       }
 
-      // --- 4. PROCESAR ENTRADA DE PRODUCTO FINAL ---
+      // --- 3. PROCESAR ENTRADA DE PRODUCTO FINAL ---
       const stockQtyProduced =
         input.quantityToProduce / recipe.finalProduct.conversionToBaseQty
 
-      // Costo unitario = Costo total de ingredientes / Cantidad de producto final
-      const unitCostProduced = totalProductionCost / stockQtyProduced
+      const unitCostProduced =
+        Math.round((totalProductionCost / stockQtyProduced) * 100) / 100
 
-      // 🔑 NUEVO: Actualizar la ficha maestra del Item con el nuevo costo calculado
-      // Esto hará que las futuras VENTAS lean este costo y el reporte sea real.
+      // Actualizar precio de costo en la ficha maestra
       await queryRunner.manager.update(
         Item,
         { id: recipe.finalProductId },
         { costPrice: unitCostProduced },
       )
 
+      // Registrar movimiento de entrada (PRODUCTION_IN)
       await this.inventoryTransactionsService.registerMovement(
         userId,
         {
@@ -244,20 +265,24 @@ export class ItemsService {
         queryRunner,
       )
 
-      // 5. Commit de la transacción
-      await queryRunner.commitTransaction()
+      if (!externalRunner) {
+        await queryRunner.commitTransaction()
+      }
 
-      // 6. Devolver el ítem actualizado (ya tendrá el costPrice y el stock nuevos)
       const updatedItem = await this.itemsRepository.findOne({
         where: { id: recipe.finalProductId },
       })
 
       return updatedItem!
     } catch (err) {
-      await queryRunner.rollbackTransaction()
+      if (!externalRunner) {
+        await queryRunner.rollbackTransaction()
+      }
       throw err
     } finally {
-      await queryRunner.release()
+      if (!externalRunner) {
+        await queryRunner.release()
+      }
     }
   }
   /**

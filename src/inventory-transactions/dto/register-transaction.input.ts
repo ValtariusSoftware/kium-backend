@@ -7,6 +7,7 @@ import {
   IsOptional,
   IsString,
   Min,
+  IsBoolean,
 } from 'class-validator'
 import { TransactionType } from '../enums/transaction-type.enum'
 
@@ -48,6 +49,11 @@ export class RegisterTransactionInput {
   @IsNumber()
   @IsOptional()
   salePriceSnapshot?: number
+
+  @Field({ nullable: true, defaultValue: false })
+  @IsBoolean()
+  @IsOptional()
+  autoProduceIfMissing?: boolean
 
   @Field({
     nullable: true,
