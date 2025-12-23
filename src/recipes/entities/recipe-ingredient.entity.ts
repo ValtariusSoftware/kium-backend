@@ -41,7 +41,12 @@ export class RecipeIngredient {
   quantityRequired: number
 
   // Unidad de la cantidad requerida (Debe ser la BaseUnit del ítem, ej. LITER)
-  @Column({ type: 'enum', enum: BaseUnit, name: 'unit_of_measure' })
+  @Column({
+    type: 'enum',
+    enum: BaseUnit,
+    enumName: 'BaseUnit',
+    name: 'unit_of_measure',
+  })
   @Field(() => BaseUnit)
   unitOfMeasure: BaseUnit
 

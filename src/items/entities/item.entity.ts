@@ -6,9 +6,11 @@ import {
   ManyToOne,
   JoinColumn,
   PrimaryGeneratedColumn,
+  OneToOne,
 } from 'typeorm'
 import { ObjectType, Field, ID, registerEnumType, Float } from '@nestjs/graphql'
 import { User } from '../../users/entities/user.entity'
+import { Recipe } from 'src/recipes/entities/recipe.entity'
 
 // --- ENUMS CRUCIALES ---
 
@@ -64,7 +66,7 @@ registerEnumType(BaseUnit, { name: 'BaseUnit' })
 
 // --- ENTIDAD ---
 
-@Entity({ name: 'items' })
+@Entity({ name: 'items', schema: 'stock_control' })
 @ObjectType()
 export class Item {
   @PrimaryGeneratedColumn('uuid')
@@ -139,6 +141,10 @@ export class Item {
   })
   @Field(() => Float, { nullable: true })
   salePrice: number | null
+
+  @OneToOne(() => Recipe, (recipe) => recipe.finalProduct)
+  @Field(() => Recipe, { nullable: true })
+  recipe?: Recipe
 
   @CreateDateColumn({ type: 'timestamp', name: 'created_at' })
   @Field()
