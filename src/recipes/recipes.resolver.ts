@@ -29,7 +29,8 @@ export class RecipesResolver {
   })
   async getRecipeByProductId(
     @Args('finalProductId', { type: () => ID }) finalProductId: string,
-  ): Promise<Recipe> {
-    return this.recipesService.findByFinalProductId(finalProductId)
+    @CurrentUser() user: User,
+  ): Promise<Recipe | null> {
+    return this.recipesService.findByFinalProductId(finalProductId, user.id)
   }
 }

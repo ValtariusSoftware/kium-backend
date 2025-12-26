@@ -8,7 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, Repository, QueryRunner, Between } from 'typeorm'
 import { InventoryTransaction } from './entities/inventory-transaction.entity'
 import { RegisterTransactionInput } from './dto/register-transaction.input'
-import { Item, ItemType } from '../items/entities/item.entity' // Necesario para actualizar stock
+import { Item } from '../items/entities/item.entity' // Necesario para actualizar stock
 import { TransactionType } from './enums/transaction-type.enum'
 import {
   FinancialDataPoint,
@@ -51,11 +51,6 @@ export class InventoryTransactionsService {
     try {
       const item = await runner.manager.findOne(Item, {
         where: { id: input.itemId, userId },
-        relations: [
-          'recipe',
-          'recipe.ingredients',
-          'recipe.ingredients.ingredientItem',
-        ],
       })
 
       if (!item) {
@@ -75,85 +70,21 @@ export class InventoryTransactionsService {
         ? -Math.abs(input.quantity)
         : Math.abs(input.quantity)
 
-      // --- 🛡️ BLOQUEO INTELIGENTE Y AUTO-PRODUCCIÓN ---
+      // --- 🛡️ VALIDACIÓN DE STOCK SIMPLE ---
       if (outTypes.includes(input.type)) {
         const potentialStock = Number(item.stock) + finalQuantity
 
         if (potentialStock < 0) {
-          // Caso A: No se puede producir
-          if (item.type !== ItemType.FINAL_PRODUCT || !item.recipe) {
-            throw new GraphQLError(
-              `Stock insuficiente para ${item.name}. Disponible: ${item.stock}`,
-              {
-                extensions: {
-                  code: 'INSUFFICIENT_STOCK',
-                  httpStatus: 400,
-                  ingredients: [item.name],
-                },
-              },
-            )
-          }
-
-          // Caso B: Es producto final pero no envió permiso
-          if (!input.autoProduceIfMissing) {
-            // 🛡️ VALIDACIÓN PREVENTIVA: ¿Realmente tiene los ingredientes?
-            const factor = Math.abs(potentialStock) / item.recipe.yieldQuantity
-            const missingIngredients: string[] = []
-
-            for (const ingredient of item.recipe.ingredients) {
-              const stockQtyToConsume =
-                (ingredient.quantityRequired * factor) /
-                ingredient.ingredientItem.conversionToBaseQty
-
-              if (Number(ingredient.ingredientItem.stock) < stockQtyToConsume) {
-                missingIngredients.push(ingredient.ingredientItem.name)
-              }
-            }
-
-            // Si después de revisar, vemos que le faltan ingredientes,
-            // no le ofrecemos "Producir", le decimos directamente que no hay ingredientes.
-            if (missingIngredients.length > 0) {
-              throw new GraphQLError(
-                `No hay stock de ${item.name} y tampoco ingredientes suficientes.`,
-                {
-                  extensions: {
-                    code: 'INSUFFICIENT_INGREDIENTS',
-                    httpStatus: 400,
-                    ingredients: missingIngredients,
-                  },
-                },
-              )
-            }
-
-            // Si llegó acá, es porque SI tiene los ingredientes, entonces sí disparamos el CAN_AUTO_PRODUCE
-            throw new GraphQLError(
-              `No hay stock de ${item.name}, pero tienes los ingredientes. ¿Fabricar el faltante?`,
-              {
-                extensions: {
-                  code: 'CAN_AUTO_PRODUCE',
-                  missing: Math.abs(potentialStock),
-                  httpStatus: 400,
-                },
-              },
-            )
-          }
-
-          // Caso C: Tiene permiso -> Producimos exactamente lo que falta
-          const quantityToProduce = Math.abs(potentialStock)
-          await this.itemsService.produce(
-            userId,
+          throw new GraphQLError(
+            `Stock insuficiente para ${item.name}. Disponible: ${item.stock}`,
             {
-              recipeId: item.recipe.id,
-              quantityToProduce: quantityToProduce,
+              extensions: {
+                code: 'INSUFFICIENT_STOCK',
+                httpStatus: 400,
+                available: item.stock,
+              },
             },
-            runner,
-          ) // 🔑 IMPORTANTE: Pasamos el runner para que sea una sola transacción
-
-          const updatedItem = await runner.manager.findOne(Item, {
-            where: { id: item.id },
-          })
-
-          item.stock = updatedItem!.stock
+          )
         }
       }
 
@@ -166,7 +97,7 @@ export class InventoryTransactionsService {
           input.salePriceSnapshot ?? Number(item.salePrice ?? 0)
       }
 
-      // 3. Crear registro
+      // 2. Crear registro
       const newTransaction = runner.manager.create(InventoryTransaction, {
         ...input,
         quantity: finalQuantity,
@@ -177,7 +108,7 @@ export class InventoryTransactionsService {
 
       const savedTransaction = await runner.manager.save(newTransaction)
 
-      // 4. Actualizar Ficha Maestra (si es compra)
+      // 3. Actualizar Ficha Maestra (si es compra)
       if (
         input.type === TransactionType.PURCHASE ||
         input.type === TransactionType.INITIAL_INVENTORY
@@ -189,7 +120,7 @@ export class InventoryTransactionsService {
         )
       }
 
-      // 5. Actualizar stock físico
+      // 4. Actualizar stock físico
       await runner.manager.increment(
         Item,
         { id: input.itemId },
@@ -289,5 +220,41 @@ export class InventoryTransactionsService {
     const totalNetProfit = data.reduce((sum, p) => sum + p.netProfit, 0)
 
     return { data, totalNetProfit }
+  }
+
+  /**
+   * Registra múltiples movimientos de stock en una sola transacción atómica.
+   * Si uno falla, se revierte toda la operación (Rollback).
+   */
+  async registerMovementsBatch(
+    userId: string,
+    inputs: RegisterTransactionInput[],
+  ): Promise<InventoryTransaction[]> {
+    const runner = this.dataSource.createQueryRunner()
+    await runner.connect()
+    await runner.startTransaction()
+
+    try {
+      const results: InventoryTransaction[] = []
+
+      for (const input of inputs) {
+        // Llamamos al método individual pasando el runner actual
+        const transaction = await this.registerMovement(
+          userId,
+          input,
+          runner, // 🔑 Esto garantiza que todos compartan la transacción
+        )
+        results.push(transaction)
+      }
+
+      await runner.commitTransaction()
+      return results
+    } catch (err) {
+      await runner.rollbackTransaction()
+      // Re-lanzamos el error original (ej: Insufficient Stock) para que GraphQL lo vea
+      throw err
+    } finally {
+      await runner.release()
+    }
   }
 }

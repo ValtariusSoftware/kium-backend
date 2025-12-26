@@ -76,17 +76,15 @@ export class RecipesService {
   }
 
   // Método para obtener una receta por ID de Producto Final
-  async findByFinalProductId(finalProductId: string): Promise<Recipe> {
+  async findByFinalProductId(
+    finalProductId: string,
+    userId: string,
+  ): Promise<Recipe | null> {
     const recipe = await this.recipesRepository.findOne({
-      where: { finalProductId },
+      where: { finalProductId, userId },
       relations: ['ingredients', 'ingredients.ingredientItem'], // Cargar ingredientes y los detalles del ítem ingrediente
     })
 
-    if (!recipe) {
-      throw new NotFoundException(
-        `No se encontró la receta para el producto ID ${finalProductId}`,
-      )
-    }
     return recipe
   }
 

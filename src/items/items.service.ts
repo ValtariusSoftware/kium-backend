@@ -6,8 +6,8 @@ import {
   forwardRef,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository, DataSource, QueryRunner } from 'typeorm'
-import { Item } from './entities/item.entity'
+import { Repository, DataSource, QueryRunner, In } from 'typeorm'
+import { Item, ItemType } from './entities/item.entity'
 import { AccessLevel } from '../users/entities/user.entity' // Asumiendo que esta es la ruta correcta
 import { CreateItemInput } from './dto/create-item.dto'
 import { RecipesService } from 'src/recipes/recipes.service'
@@ -16,6 +16,7 @@ import { InventoryTransactionsService } from 'src/inventory-transactions/invento
 import { TransactionType } from 'src/inventory-transactions/enums/transaction-type.enum'
 import { AdjustStockInput } from './dto/adjust-stock.input'
 import { GraphQLError } from 'graphql'
+import { ItemsFilterInput, StockStatusFilter } from './dto/items-filter.input'
 
 @Injectable()
 export class ItemsService {
@@ -129,12 +130,44 @@ export class ItemsService {
   }
 
   /**
-   * Obtiene todos los ítems de un usuario (para la query de inventario total).
-   * @param userId El ID del usuario.
-   * @returns Lista de ítems.
+   * Obtiene la lista de ítems filtrada según las necesidades del frontend.
+   * Permite buscar por múltiples tipos (RESELL, FINAL, INGREDIENT) y estados de stock.
    */
-  async findAll(userId: string): Promise<Item[]> {
-    return this.itemsRepository.find({ where: { userId } })
+  async getItems(userId: string, filters?: ItemsFilterInput): Promise<Item[]> {
+    const query = this.itemsRepository
+      .createQueryBuilder('item')
+      .where('item.userId = :userId', { userId })
+
+    // 1. Filtrado por múltiples tipos
+    if (filters?.types && filters.types.length > 0) {
+      query.andWhere('item.type IN (:...types)', { types: filters.types })
+    }
+
+    // 2. Filtros de estado de stock
+    if (filters?.stockStatus) {
+      switch (filters.stockStatus) {
+        case StockStatusFilter.OUT_OF_STOCK:
+          // Productos que se agotaron completamente
+          query.andWhere('item.stock <= 0')
+          break
+
+        case StockStatusFilter.LOW_STOCK:
+          // CRÍTICO: Ahora incluye ítems con stock 0 si tienen alerta configurada.
+          // Si minStockAlert es 5 y stock es 0, el Pan Francés aparecerá aquí.
+          query
+            .andWhere('item.minStockAlert IS NOT NULL')
+            .andWhere('item.stock <= item.minStockAlert')
+          break
+
+        case StockStatusFilter.AVAILABLE:
+          // Solo lo que tiene existencia física para entrega inmediata
+          query.andWhere('item.stock > 0')
+          break
+      }
+    }
+
+    query.orderBy('item.name', 'ASC')
+    return query.getMany()
   }
 
   /**
@@ -335,5 +368,93 @@ export class ItemsService {
       .andWhere('item.stock <= item.minStockAlert')
       .orderBy('item.stock', 'ASC') // Priorizar los que tienen menos
       .getMany()
+  }
+
+  /**
+   * Calcula cuánto se puede producir de un ítem basado en sus insumos actuales.
+   * Devuelve el stock "virtual" adicional que podría fabricarse.
+   */
+  async calculateVirtualStock(userId: string, item: Item): Promise<number> {
+    // 1. Si no es un producto final, no se produce nada extra
+    if (item.type !== ItemType.FINAL_PRODUCT) return 0
+
+    // 2. Buscamos la receta (usando el método silencioso que no tira error)
+    const recipe = await this.recipesService.findByFinalProductId(
+      item.id,
+      userId,
+    )
+
+    // 3. Si no tiene receta o no tiene ingredientes, no se puede producir virtualmente
+    if (!recipe || !recipe.ingredients || recipe.ingredients.length === 0)
+      return 0
+
+    let minPossible = Infinity
+
+    for (const ingredient of recipe.ingredients) {
+      const stockAvailable = Number(ingredient.ingredientItem.stock)
+
+      // Cantidad de ingrediente necesaria para 1 unidad de producto final
+      // Fórmula: (Cantidad requerida en receta / Rendimiento de receta) / Conversión de medida del ingrediente
+      const qtyNeededPerUnit =
+        ingredient.quantityRequired /
+        recipe.yieldQuantity /
+        ingredient.ingredientItem.conversionToBaseQty
+
+      if (qtyNeededPerUnit > 0) {
+        // ¿Cuántas unidades finales puedo hacer con este ingrediente específico?
+        const possibleWithThisIng = Math.floor(
+          stockAvailable / qtyNeededPerUnit,
+        )
+
+        // El ingrediente con MENOR capacidad es nuestro cuello de botella
+        if (possibleWithThisIng < minPossible) {
+          minPossible = possibleWithThisIng
+        }
+      }
+    }
+
+    // Si minPossible sigue siendo Infinity, es porque no hubo cálculos válidos
+    return minPossible === Infinity ? 0 : minPossible
+  }
+
+  /**
+   * Produce múltiples recetas en una sola transacción.
+   */
+  async produceItemsBatch(
+    userId: string,
+    inputs: ProduceItemInput[],
+  ): Promise<Item[]> {
+    const runner = this.dataSource.createQueryRunner()
+    await runner.connect()
+    await runner.startTransaction()
+
+    try {
+      const itemIds: string[] = []
+
+      for (const input of inputs) {
+        // Ejecutamos la producción (esto descuenta insumos y suma al producto final)
+        const updatedItem = await this.produce(userId, input, runner)
+
+        // Guardamos los IDs para recargarlos al final
+        if (!itemIds.includes(updatedItem.id)) {
+          itemIds.push(updatedItem.id)
+        }
+      }
+
+      // 🔑 PASO CLAVE 1: Hacemos el commit PRIMERO
+      await runner.commitTransaction()
+
+      // 🔑 PASO CLAVE 2: Recargamos los datos frescos de la DB después del commit
+      // Esto garantiza que el stock devuelto sea el real actualizado
+      return this.itemsRepository.find({
+        where: { id: In(itemIds) }, // Necesitás importar { In } de 'typeorm'
+        order: { name: 'ASC' },
+      })
+    } catch (err) {
+      await runner.rollbackTransaction()
+      throw err
+    } finally {
+      await runner.release()
+    }
   }
 }

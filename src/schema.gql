@@ -63,6 +63,12 @@ type Item {
   recipe: Recipe
   createdAt: DateTime!
   updatedAt: DateTime!
+
+  """Cantidad extra que se puede fabricar con los insumos actuales."""
+  canProduceQuantity: Float!
+
+  """Suma del stock físico actual más lo que se puede producir."""
+  totalAvailableStock: Float!
 }
 
 enum ItemType {
@@ -166,7 +172,7 @@ type FinancialReportResponse {
 
 type Query {
   users: [User!]!
-  items: [Item!]!
+  items(filters: ItemsFilterInput): [Item!]!
   lowStockReport: [Item!]!
 
   """Obtiene la receta por el ID del producto final."""
@@ -174,6 +180,17 @@ type Query {
   inventoryTransactionsByItem(itemId: ID!): [InventoryTransaction!]!
   itemTransactionHistory(itemId: ID!): [TransactionHistoryItem!]!
   financialReport(startDate: DateTime!, endDate: DateTime!, groupBy: ReportGroupBy!): FinancialReportResponse!
+}
+
+input ItemsFilterInput {
+  types: [ItemType!]
+  stockStatus: StockStatusFilter
+}
+
+enum StockStatusFilter {
+  LOW_STOCK
+  OUT_OF_STOCK
+  AVAILABLE
 }
 
 enum ReportGroupBy {
@@ -192,6 +209,7 @@ type Mutation {
   """Ejecuta una producción, ajustando stock."""
   produceItem(produceItemInput: ProduceItemInput!): Item!
   adjustItemStock(adjustStockInput: AdjustStockInput!): Item!
+  produceItemsBatch(inputs: [ProduceItemInput!]!): [Item!]!
 
   """Crea una nueva receta para un FINAL_PRODUCT."""
   createRecipe(createRecipeInput: CreateRecipeInput!): Recipe!
@@ -200,6 +218,9 @@ type Mutation {
   Registra un movimiento de stock (Compra, Venta, Ajuste, Producción) y actualiza el stock total del Item.
   """
   registerInventoryMovement(registerTransactionInput: RegisterTransactionInput!): InventoryTransaction!
+
+  """Registra múltiples movimientos de stock de forma atómica."""
+  registerInventoryMovements(registerTransactionInputs: [RegisterTransactionInput!]!): [InventoryTransaction!]!
 }
 
 input CreateItemInput {

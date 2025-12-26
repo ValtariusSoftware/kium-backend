@@ -1,4 +1,12 @@
-import { Resolver, Query, Mutation, Args } from '@nestjs/graphql'
+import {
+  Resolver,
+  Query,
+  Mutation,
+  Args,
+  ResolveField,
+  Float,
+  Parent,
+} from '@nestjs/graphql'
 import { ItemsService } from './items.service'
 import { Item } from './entities/item.entity'
 import { CreateItemInput } from './dto/create-item.dto'
@@ -6,6 +14,7 @@ import { User } from '../users/entities/user.entity'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { ProduceItemInput } from './dto/produce-item.dto'
 import { AdjustStockInput } from './dto/adjust-stock.input'
+import { ItemsFilterInput } from './dto/items-filter.input'
 
 @Resolver(() => Item)
 export class ItemsResolver {
@@ -21,8 +30,13 @@ export class ItemsResolver {
   }
 
   @Query(() => [Item], { name: 'items' })
-  async findAll(@CurrentUser() user: User): Promise<Item[]> {
-    return this.itemsService.findAll(user.id)
+  async getItems(
+    @CurrentUser() user: User,
+    // Agregamos los filtros como argumento opcional
+    @Args('filters', { nullable: true }) filters?: ItemsFilterInput,
+  ): Promise<Item[]> {
+    // Ahora el service recibe el userId y el objeto de filtros completo
+    return this.itemsService.getItems(user.id, filters)
   }
 
   @Mutation(() => Item, {
@@ -50,5 +64,33 @@ export class ItemsResolver {
   @Query(() => [Item], { name: 'lowStockReport' })
   async getLowStockReport(@CurrentUser() user: User): Promise<Item[]> {
     return this.itemsService.getLowStockItems(user.id)
+  }
+
+  @ResolveField(() => Float, {
+    description:
+      'Cantidad extra que se puede fabricar con los insumos actuales.',
+  })
+  async canProduceQuantity(@Parent() item: Item): Promise<number> {
+    return this.itemsService.calculateVirtualStock(item.userId, item)
+  }
+
+  @ResolveField(() => Float, {
+    description: 'Suma del stock físico actual más lo que se puede producir.',
+  })
+  async totalAvailableStock(@Parent() item: Item): Promise<number> {
+    const virtual = await this.itemsService.calculateVirtualStock(
+      item.userId,
+      item,
+    )
+    return Number(item.stock) + virtual
+  }
+
+  @Mutation(() => [Item], { name: 'produceItemsBatch' })
+  async produceItemsBatch(
+    @Args({ name: 'inputs', type: () => [ProduceItemInput] })
+    inputs: ProduceItemInput[],
+    @CurrentUser() user: User,
+  ): Promise<Item[]> {
+    return this.itemsService.produceItemsBatch(user.id, inputs)
   }
 }
