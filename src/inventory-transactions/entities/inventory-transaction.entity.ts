@@ -10,6 +10,7 @@ import {
 import { Item } from '../../items/entities/item.entity'
 import { ObjectType, Field, ID, Float } from '@nestjs/graphql'
 import { TransactionType } from '../enums/transaction-type.enum'
+import { Sale } from 'src/sales/entities/sale.entity'
 
 @Entity({ name: 'inventory_transactions', schema: 'stock_control' }) // Asegurando el esquema
 @ObjectType()
@@ -72,4 +73,12 @@ export class InventoryTransaction {
   @CreateDateColumn({ type: 'timestamp', name: 'created_at' })
   @Field()
   createdAt: Date
+
+  @ManyToOne('Sale', 'items', { nullable: true }) // 'Sale' como string es más seguro en circulares
+  @JoinColumn({ name: 'sale_id' })
+  @Field(() => Sale, { nullable: true })
+  sale?: Sale
+
+  @Column({ name: 'sale_id', type: 'uuid', nullable: true })
+  saleId?: string
 }
