@@ -36,8 +36,11 @@ ESta la B ya esta, pero habria que preguntar si solo se enviara y se pintara o s
 
 Ver ultima respuesta Gemini para ver y analizar ganancias.
 
-Token leído de DataStore (Inicio): 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzY2NTE2NDU0LCJleHAiOjE3NjY1MjAwNTR9.v9sOy5_HuVciOZnldCqPNs439WkEoIkEfq9F11ynTmg...' (Length: 177)
+Token leído de DataStore (Inicio): 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzY2NzY0MjkyLCJleHAiOjE3NjY3Njc4OTJ9.mJvebd2Gf8HwPl2kMhkrBUnjRACfdl0OlQI3PfhuP3Y...' (Length: 177)
 
+
+
+REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzY2NzY1MTg4LCJleHAiOjE3NjczNjk5ODh9.UnKSy5RjNqWsN-0QdWefS4YQFUTosNrCDzKfTVo5nEo
 
 
 

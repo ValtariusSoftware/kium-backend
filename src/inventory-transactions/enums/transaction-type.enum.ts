@@ -13,6 +13,7 @@ export enum TransactionType {
   CONSUMPTION = 'CONSUMPTION', // Uso de ingrediente en una receta (materia prima)
   PRODUCTION_OUT = 'PRODUCTION_OUT', // Salida de materia prima usada en producción
   ADJUSTMENT_OUT = 'ADJUSTMENT_OUT', // Pérdida, robo, daño, ajuste negativo
+  RETURN_FROM_SALE = 'RETURN_FROM_SALE', // Devolución de venta o anulación
 }
 
 // 💡 REGISTRAR PARA GRAPHQL

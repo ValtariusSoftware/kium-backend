@@ -122,6 +122,14 @@ type RefreshPayload {
   refreshToken: String!
 }
 
+type Sale {
+  id: ID!
+  totalAmount: Float!
+  createdAt: DateTime!
+  items: [InventoryTransaction!]
+  isVoided: Boolean!
+}
+
 type InventoryTransaction {
   id: ID!
   item: Item!
@@ -132,6 +140,7 @@ type InventoryTransaction {
   documentRef: String
   notes: String
   createdAt: DateTime!
+  sale: Sale
 }
 
 """Tipos de movimientos de inventario soportados por el sistema."""
@@ -144,6 +153,7 @@ enum TransactionType {
   CONSUMPTION
   PRODUCTION_OUT
   ADJUSTMENT_OUT
+  RETURN_FROM_SALE
 }
 
 type TransactionHistoryItem {
@@ -180,6 +190,7 @@ type Query {
   inventoryTransactionsByItem(itemId: ID!): [InventoryTransaction!]!
   itemTransactionHistory(itemId: ID!): [TransactionHistoryItem!]!
   financialReport(startDate: DateTime!, endDate: DateTime!, groupBy: ReportGroupBy!): FinancialReportResponse!
+  sales: [Sale!]!
 }
 
 input ItemsFilterInput {
@@ -221,6 +232,8 @@ type Mutation {
 
   """Registra múltiples movimientos de stock de forma atómica."""
   registerInventoryMovements(registerTransactionInputs: [RegisterTransactionInput!]!): [InventoryTransaction!]!
+  createSale(createSaleInput: CreateSaleInput!): Sale!
+  voidSale(saleId: String!): Sale!
 }
 
 input CreateItemInput {
@@ -283,4 +296,14 @@ input RegisterTransactionInput {
 
   """Notas u observación para el movimiento (ej. Razón de ajuste)."""
   notes: String
+  saleId: String
+}
+
+input CreateSaleInput {
+  items: [SaleItemInput!]!
+}
+
+input SaleItemInput {
+  itemId: String!
+  quantity: Float!
 }

@@ -71,4 +71,9 @@ export class RegisterTransactionInput {
   @IsString()
   @IsOptional()
   notes?: string
+
+  @Field(() => String, { nullable: true })
+  @IsOptional()
+  @IsUUID()
+  saleId?: string
 }
