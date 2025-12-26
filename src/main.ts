@@ -36,7 +36,10 @@ ESta la B ya esta, pero habria que preguntar si solo se enviara y se pintara o s
 
 Ver ultima respuesta Gemini para ver y analizar ganancias.
 
-Token leído de DataStore (Inicio): 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzY2NDE5ODAxLCJleHAiOjE3NjY0MjM0MDF9.ow4OBlXrweq6_aNDFeEgnhZm3HPjwkWidPGhQHQaTZ4...' (Length: 177)
+Token leído de DataStore (Inicio): 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzY2NTE2NDU0LCJleHAiOjE3NjY1MjAwNTR9.v9sOy5_HuVciOZnldCqPNs439WkEoIkEfq9F11ynTmg...' (Length: 177)
+
+
+
 
 Carga masiva para usuarios de mas de x productos, cual podria ser el limite? darles una pequeña prueba a usuarios free.
 Debatir la creacion del excel quizas en un solo excel se podria armar el producto final ingredientes y cantidades.

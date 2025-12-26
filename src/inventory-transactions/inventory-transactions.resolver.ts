@@ -88,4 +88,22 @@ export class InventoryTransactionsResolver {
     }
     return item
   }
+
+  @Mutation(() => [InventoryTransaction], {
+    name: 'registerInventoryMovements',
+    description: 'Registra múltiples movimientos de stock de forma atómica.',
+  })
+  async registerInventoryMovements(
+    @Args({
+      name: 'registerTransactionInputs',
+      type: () => [RegisterTransactionInput],
+    })
+    inputs: RegisterTransactionInput[],
+    @CurrentUser() user: User, // Asumiendo que tienes este decorador
+  ): Promise<InventoryTransaction[]> {
+    return this.inventoryTransactionsService.registerMovementsBatch(
+      user.id,
+      inputs,
+    )
+  }
 }
