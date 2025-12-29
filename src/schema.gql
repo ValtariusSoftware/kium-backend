@@ -180,6 +180,22 @@ type FinancialReportResponse {
   totalNetProfit: Float!
 }
 
+type TopProduct {
+  name: String!
+  quantitySold: Float!
+}
+
+type DashboardSummary {
+  monthlyNetProfit: Float!
+  lowStockCount: Int!
+  lowStockPreview: [Item!]!
+  topSellingProducts: [TopProduct!]!
+  totalSalesMonth: Int!
+  salesTrend: Int!
+  monthlyLosses: Float!
+  leastSellingProducts: [TopProduct!]!
+}
+
 type Query {
   users: [User!]!
   items(filters: ItemsFilterInput): [Item!]!
@@ -191,6 +207,11 @@ type Query {
   itemTransactionHistory(itemId: ID!): [TransactionHistoryItem!]!
   financialReport(startDate: DateTime!, endDate: DateTime!, groupBy: ReportGroupBy!): FinancialReportResponse!
   sales: [Sale!]!
+  getHomeDashboard: DashboardSummary!
+  getTopSellingDetailed(pagination: PaginationInput): [TopProduct!]!
+  getLeastSellingDetailed(pagination: PaginationInput): [TopProduct!]!
+  getLowStockDetailed(pagination: PaginationInput): [Item!]!
+  getMonthlySalesDetailed(pagination: PaginationInput): [Sale!]!
 }
 
 input ItemsFilterInput {
@@ -207,6 +228,11 @@ enum StockStatusFilter {
 enum ReportGroupBy {
   DAY
   MONTH
+}
+
+input PaginationInput {
+  limit: Int = 6
+  offset: Int = 0
 }
 
 type Mutation {
