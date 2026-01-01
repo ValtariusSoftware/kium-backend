@@ -42,6 +42,7 @@ export class SalesService {
             type: TransactionType.SALE,
             documentRef: `SALE-${savedSale.id.substring(0, 8)}`,
             saleId: savedSale.id, // 👈 VINCULACIÓN CLAVE
+            salePriceSnapshot: itemInput.priceOverride,
           },
           queryRunner, // Pasamos el runner para que sea atómico
         )
@@ -107,6 +108,8 @@ export class SalesService {
             type: TransactionType.RETURN_FROM_SALE, // O un nuevo tipo RETURN_FROM_SALE
             documentRef: `VOID-SALE-${sale.id.substring(0, 8)}`,
             notes: `Anulación de venta ${sale.id}`,
+            unitCostSnapshot: transaction.unitCostSnapshot, // Usamos el costo que se grabó cuando se vendió
+            salePriceSnapshot: transaction.salePriceSnapshot, // Usamos el precio que se grabó cuando se vendió
           },
           queryRunner,
         )

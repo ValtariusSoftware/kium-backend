@@ -53,7 +53,6 @@ scalar DateTime
 type Item {
   id: ID!
   name: String!
-  type: ItemType!
   stock: Float!
   baseUnit: BaseUnit!
   conversionToBaseQty: Float!
@@ -61,20 +60,20 @@ type Item {
   costPrice: Float
   salePrice: Float
   recipe: Recipe
+  barcode: String
   createdAt: DateTime!
   updatedAt: DateTime!
+  sku: String
+  isSaleable: Boolean!
+  isProduced: Boolean!
+  isPurchasable: Boolean!
+  isIngredient: Boolean!
 
   """Cantidad extra que se puede fabricar con los insumos actuales."""
   canProduceQuantity: Float!
 
   """Suma del stock físico actual más lo que se puede producir."""
   totalAvailableStock: Float!
-}
-
-enum ItemType {
-  RESELL_PRODUCT
-  FINAL_PRODUCT
-  INGREDIENT
 }
 
 type User {
@@ -200,6 +199,7 @@ type Query {
   users: [User!]!
   items(filters: ItemsFilterInput): [Item!]!
   lowStockReport: [Item!]!
+  getItemByBarcode(barcode: String!): Item
 
   """Obtiene la receta por el ID del producto final."""
   recipeByProduct(finalProductId: ID!): Recipe!
@@ -215,7 +215,9 @@ type Query {
 }
 
 input ItemsFilterInput {
-  types: [ItemType!]
+  isSaleable: Boolean
+  isProduced: Boolean
+  isIngredient: Boolean
   stockStatus: StockStatusFilter
 }
 
@@ -247,6 +249,7 @@ type Mutation {
   produceItem(produceItemInput: ProduceItemInput!): Item!
   adjustItemStock(adjustStockInput: AdjustStockInput!): Item!
   produceItemsBatch(inputs: [ProduceItemInput!]!): [Item!]!
+  updateItem(updateItemInput: UpdateItemInput!): Item!
 
   """Crea una nueva receta para un FINAL_PRODUCT."""
   createRecipe(createRecipeInput: CreateRecipeInput!): Recipe!
@@ -264,13 +267,14 @@ type Mutation {
 
 input CreateItemInput {
   name: String!
-  type: ItemType!
   stock: Float!
   baseUnit: BaseUnit!
   conversionToBaseQty: Float!
   minStockAlert: Float
   costPrice: Float
   salePrice: Float
+  barcode: String
+  sku: String
 }
 
 input ProduceItemInput {
@@ -283,6 +287,19 @@ input AdjustStockInput {
   quantity: Float!
   type: TransactionType!
   reason: String
+}
+
+input UpdateItemInput {
+  name: String
+  stock: Float
+  baseUnit: BaseUnit
+  conversionToBaseQty: Float
+  minStockAlert: Float
+  costPrice: Float
+  salePrice: Float
+  barcode: String
+  sku: String
+  id: ID!
 }
 
 input CreateRecipeInput {
@@ -332,4 +349,5 @@ input CreateSaleInput {
 input SaleItemInput {
   itemId: String!
   quantity: Float!
+  priceOverride: Float
 }
