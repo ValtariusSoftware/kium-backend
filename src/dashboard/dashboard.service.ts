@@ -1,10 +1,9 @@
-// dashboard/dashboard.service.ts
 import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, Between } from 'typeorm'
 import { Sale } from '../sales/entities/sale.entity'
 import { InventoryTransaction } from '../inventory-transactions/entities/inventory-transaction.entity'
-import { Item, ItemType } from '../items/entities/item.entity'
+import { Item } from '../items/entities/item.entity'
 import { TransactionType } from '../inventory-transactions/enums/transaction-type.enum'
 import { DashboardSummary, TopProduct } from './dto/dashboard-summary.type'
 import { AccessLevel } from 'src/users/entities/user.entity'
@@ -24,17 +23,8 @@ export class DashboardService {
     accessLevel: AccessLevel,
   ): Promise<DashboardSummary> {
     const now = new Date()
-    const startOfMonth = new Date(
-      now.getFullYear(),
-      now.getMonth(),
-      1,
-      0,
-      0,
-      0,
-      0,
-    )
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
 
-    // Configuración para tendencia (Hoy vs Ayer)
     const startOfToday = new Date()
     startOfToday.setHours(0, 0, 0, 0)
     const endOfToday = new Date()
@@ -45,11 +35,11 @@ export class DashboardService {
     const endOfYesterday = new Date(startOfToday)
     endOfYesterday.setMilliseconds(-1)
 
-    // 1. OBTENER VENTAS DEL MES (No anuladas)
+    // 1. VENTAS DEL MES
     const salesMonth = await this.saleRepo.find({
       where: {
         userId,
-        createdAt: Between(startOfMonth, new Date()),
+        createdAt: Between(startOfMonth, now),
         isVoided: false,
       },
       relations: ['items'],
@@ -58,7 +48,6 @@ export class DashboardService {
     let totalRevenueProfit = 0
     salesMonth.forEach((sale) => {
       sale.items?.forEach((trans) => {
-        // (Precio Venta - Costo) * Cantidad
         const profit =
           (Number(trans.salePriceSnapshot) - Number(trans.unitCostSnapshot)) *
           Math.abs(Number(trans.quantity))
@@ -66,50 +55,47 @@ export class DashboardService {
       })
     })
 
-    // 2. OBTENER PÉRDIDAS (Ajustes de salida: robos, roturas, etc.)
+    // 2. PÉRDIDAS
     const lossesTransactions = await this.transRepo.find({
       where: {
         userId,
         type: TransactionType.ADJUSTMENT_OUT,
-        createdAt: Between(startOfMonth, new Date()),
+        createdAt: Between(startOfMonth, now),
       },
     })
 
     let monthlyLosses = 0
     lossesTransactions.forEach((t) => {
-      // Valor monetario perdido: Cantidad * Costo
       monthlyLosses += Math.abs(Number(t.quantity)) * Number(t.unitCostSnapshot)
     })
 
-    // 3. BAJO STOCK (Conteo total y preview de 3)
+    // 3. BAJO STOCK (Corregido a camelCase y flags)
     const lowStockItems = await this.itemRepo
       .createQueryBuilder('item')
-      .where('item.user_id = :userId', { userId })
-      .andWhere('item.stock <= item.min_stock_alert')
+      .where('item.userId = :userId', { userId })
+      .andWhere('item.minStockAlert IS NOT NULL')
+      .andWhere('item.stock <= item.minStockAlert')
       .getMany()
 
-    // 4. TOP 3 MÁS VENDIDOS (Solo productos de venta)
+    // 4. TOP 3 MÁS VENDIDOS (Usando flag isSaleable)
     const topProductsRaw = await this.transRepo
       .createQueryBuilder('t')
       .leftJoin('t.sale', 'sale')
       .leftJoin('t.item', 'item')
       .select('item.name', 'name')
       .addSelect('SUM(ABS(t.quantity))', 'total')
-      .where('t.user_id = :userId', { userId })
+      .where('t.userId = :userId', { userId })
       .andWhere('t.type = :type', { type: TransactionType.SALE })
-      .andWhere('item.type IN (:...itemTypes)', {
-        itemTypes: [ItemType.RESELL_PRODUCT, ItemType.FINAL_PRODUCT],
-      }) // 👈 Filtro por tipo
-      .andWhere('t.created_at >= :startOfMonth', { startOfMonth })
-      .andWhere('(sale.is_voided = false OR sale.id IS NULL)')
+      .andWhere('item.isSaleable = :isSaleable', { isSaleable: true }) // 👈 Cambio clave
+      .andWhere('t.createdAt >= :startOfMonth', { startOfMonth })
+      .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
       .groupBy('item.name')
       .orderBy('total', 'DESC')
       .limit(3)
       .getRawMany()
 
-    // 5. TOP 3 MENOS VENDIDOS (Lógica Condicional PRO)
+    // 5. TOP 3 MENOS VENDIDOS (PRO)
     let leastSellingProducts: TopProduct[] = []
-
     if (accessLevel === AccessLevel.PRO) {
       const leastProductsRaw = await this.transRepo
         .createQueryBuilder('t')
@@ -117,13 +103,11 @@ export class DashboardService {
         .leftJoin('t.item', 'item')
         .select('item.name', 'name')
         .addSelect('SUM(ABS(t.quantity))', 'total')
-        .where('t.user_id = :userId', { userId })
+        .where('t.userId = :userId', { userId })
         .andWhere('t.type = :type', { type: TransactionType.SALE })
-        .andWhere('item.type IN (:...itemTypes)', {
-          itemTypes: [ItemType.RESELL_PRODUCT, ItemType.FINAL_PRODUCT],
-        })
-        .andWhere('t.created_at >= :startOfMonth', { startOfMonth })
-        .andWhere('(sale.is_voided = false OR sale.id IS NULL)')
+        .andWhere('item.isSaleable = :isSaleable', { isSaleable: true }) // 👈 Cambio clave
+        .andWhere('t.createdAt >= :startOfMonth', { startOfMonth })
+        .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
         .groupBy('item.name')
         .orderBy('total', 'ASC')
         .limit(3)
@@ -135,7 +119,7 @@ export class DashboardService {
       }))
     }
 
-    // 6. TENDENCIA DE ACTIVIDAD (Ventas hoy vs ventas ayer)
+    // 6. TENDENCIA
     const countToday = await this.saleRepo.count({
       where: {
         userId,
@@ -152,7 +136,7 @@ export class DashboardService {
     })
 
     return {
-      monthlyNetProfit: totalRevenueProfit - monthlyLosses, // GANANCIA REAL (Ventas - Pérdidas)
+      monthlyNetProfit: totalRevenueProfit - monthlyLosses,
       monthlyLosses,
       lowStockCount: lowStockItems.length,
       lowStockPreview: lowStockItems.slice(0, 3),
@@ -166,27 +150,24 @@ export class DashboardService {
     }
   }
 
-  // 1. Ver todos los Más Vendidos (Paginado)
+  // Métodos detallados actualizados con isSaleable y camelCase
   async getTopSellingDetailed(userId: string, pagination: PaginationInput) {
     const startOfMonth = new Date(
       new Date().getFullYear(),
       new Date().getMonth(),
       1,
     )
-
     return await this.transRepo
       .createQueryBuilder('t')
       .leftJoin('t.sale', 'sale')
       .leftJoin('t.item', 'item')
       .select('item.name', 'name')
       .addSelect('SUM(ABS(t.quantity))', 'total')
-      .where('t.user_id = :userId', { userId })
+      .where('t.userId = :userId', { userId })
       .andWhere('t.type = :type', { type: TransactionType.SALE })
-      .andWhere('item.type IN (:...itemTypes)', {
-        itemTypes: [ItemType.RESELL_PRODUCT, ItemType.FINAL_PRODUCT],
-      })
-      .andWhere('t.created_at >= :startOfMonth', { startOfMonth })
-      .andWhere('(sale.is_voided = false OR sale.id IS NULL)')
+      .andWhere('item.isSaleable = :isSaleable', { isSaleable: true })
+      .andWhere('t.createdAt >= :startOfMonth', { startOfMonth })
+      .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
       .groupBy('item.name')
       .orderBy('total', 'DESC')
       .limit(pagination.limit)
@@ -197,27 +178,23 @@ export class DashboardService {
       )
   }
 
-  // 2. Ver todos los Menos Vendidos (Paginado - Solo PRO)
   async getLeastSellingDetailed(userId: string, pagination: PaginationInput) {
     const startOfMonth = new Date(
       new Date().getFullYear(),
       new Date().getMonth(),
       1,
     )
-
     return await this.transRepo
       .createQueryBuilder('t')
       .leftJoin('t.sale', 'sale')
       .leftJoin('t.item', 'item')
       .select('item.name', 'name')
       .addSelect('SUM(ABS(t.quantity))', 'total')
-      .where('t.user_id = :userId', { userId })
+      .where('t.userId = :userId', { userId })
       .andWhere('t.type = :type', { type: TransactionType.SALE })
-      .andWhere('item.type IN (:...itemTypes)', {
-        itemTypes: [ItemType.RESELL_PRODUCT, ItemType.FINAL_PRODUCT],
-      })
-      .andWhere('t.created_at >= :startOfMonth', { startOfMonth })
-      .andWhere('(sale.is_voided = false OR sale.id IS NULL)')
+      .andWhere('item.isSaleable = :isSaleable', { isSaleable: true })
+      .andWhere('t.createdAt >= :startOfMonth', { startOfMonth })
+      .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
       .groupBy('item.name')
       .orderBy('total', 'ASC')
       .limit(pagination.limit)
@@ -228,26 +205,24 @@ export class DashboardService {
       )
   }
 
-  // 3. Ver todos los productos con Bajo Stock (Paginado)
   async getLowStockDetailed(userId: string, pagination: PaginationInput) {
     return await this.itemRepo
       .createQueryBuilder('item')
-      .where('item.user_id = :userId', { userId })
-      .andWhere('item.stock <= item.min_stock_alert')
+      .where('item.userId = :userId', { userId })
+      .andWhere('item.minStockAlert IS NOT NULL')
+      .andWhere('item.stock <= item.minStockAlert')
       .orderBy('item.stock', 'ASC')
       .limit(pagination.limit)
       .offset(pagination.offset)
       .getMany()
   }
 
-  // 4. Ver todas las Ventas del Mes (Paginado)
   async getMonthlySalesDetailed(userId: string, pagination: PaginationInput) {
     const startOfMonth = new Date(
       new Date().getFullYear(),
       new Date().getMonth(),
       1,
     )
-
     return await this.saleRepo.find({
       where: {
         userId,

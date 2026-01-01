@@ -15,6 +15,7 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { ProduceItemInput } from './dto/produce-item.dto'
 import { AdjustStockInput } from './dto/adjust-stock.input'
 import { ItemsFilterInput } from './dto/items-filter.input'
+import { UpdateItemInput } from './dto/update-item.input'
 
 @Resolver(() => Item)
 export class ItemsResolver {
@@ -46,10 +47,6 @@ export class ItemsResolver {
     @Args('produceItemInput') produceItemInput: ProduceItemInput,
     @CurrentUser() user: User,
   ): Promise<Item> {
-    // 💡 NOTA: Idealmente, esta lógica debería estar en RecipesResolver,
-    // pero la colocamos aquí temporalmente para simplificar la estructura.
-    // Necesitas implementar el método 'produce' en el service.
-    // Asumimos que devuelve el ítem (Producto Final) actualizado.
     return this.itemsService.produce(user.id, produceItemInput)
   }
 
@@ -92,5 +89,22 @@ export class ItemsResolver {
     @CurrentUser() user: User,
   ): Promise<Item[]> {
     return this.itemsService.produceItemsBatch(user.id, inputs)
+  }
+
+  // Buscar un producto por código de barras (Rápido para el escáner)
+  @Query(() => Item, { name: 'getItemByBarcode', nullable: true })
+  async getByBarcode(
+    @Args('barcode') barcode: string,
+    @CurrentUser() user: User,
+  ): Promise<Item | null> {
+    return this.itemsService.findByBarcode(user.id, barcode)
+  }
+
+  @Mutation(() => Item)
+  async updateItem(
+    @Args('updateItemInput') updateItemInput: UpdateItemInput,
+    @CurrentUser() user: User,
+  ): Promise<Item> {
+    return this.itemsService.update(user.id, updateItemInput)
   }
 }

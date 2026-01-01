@@ -108,10 +108,11 @@ export class InventoryTransactionsService {
 
       const savedTransaction = await runner.manager.save(newTransaction)
 
-      // 3. Actualizar Ficha Maestra (si es compra)
+      // 3. Actualizar Ficha Maestra (Solo para compras o inventario inicial)
       if (
-        input.type === TransactionType.PURCHASE ||
-        input.type === TransactionType.INITIAL_INVENTORY
+        (input.type === TransactionType.PURCHASE ||
+          input.type === TransactionType.INITIAL_INVENTORY) &&
+        unitCostSnapshot > 0
       ) {
         await runner.manager.update(
           Item,
@@ -178,12 +179,11 @@ export class InventoryTransactionsService {
 
     // 2. Procesar y agrupar
     transactions.forEach((t) => {
-      // Definir la etiqueta según la agrupación (Día o Mes)
       const date = new Date(t.createdAt)
       const label =
         groupBy === ReportGroupBy.DAY
-          ? date.toISOString().split('T')[0] // Ej: "2025-12-19"
-          : `${date.getFullYear()}-${date.getMonth() + 1}` // Ej: "2025-12"
+          ? date.toISOString().split('T')[0]
+          : `${date.getFullYear()}-${date.getMonth() + 1}`
 
       if (!reportMap.has(label)) {
         reportMap.set(label, {
@@ -201,23 +201,30 @@ export class InventoryTransactionsService {
       const sale = Number(t.salePriceSnapshot || 0)
 
       if (t.type === TransactionType.SALE) {
-        // Venta: Sumamos ingreso bruto y el costo de lo vendido (qty es negativa en SALE)
         point.revenue += Math.abs(qty) * sale
         point.cost += Math.abs(qty) * cost
       } else if (
         t.type === TransactionType.ADJUSTMENT_OUT ||
         t.type === TransactionType.CONSUMPTION
       ) {
-        // Pérdida: Mercadería que salió sin venderse
         point.losses += Math.abs(qty) * cost
       }
 
-      // El neto siempre es: lo que entró - lo que costó producirlo - lo que se tiró
+      // Calculamos el neto
       point.netProfit = point.revenue - point.cost - point.losses
     })
 
-    const data = Array.from(reportMap.values())
-    const totalNetProfit = data.reduce((sum, p) => sum + p.netProfit, 0)
+    // 3. Limpieza de decimales (Rounding)
+    const data = Array.from(reportMap.values()).map((point) => ({
+      ...point,
+      revenue: Math.round(point.revenue * 100) / 100,
+      cost: Math.round(point.cost * 100) / 100,
+      losses: Math.round(point.losses * 100) / 100,
+      netProfit: Math.round(point.netProfit * 100) / 100,
+    }))
+
+    const totalNetProfit =
+      Math.round(data.reduce((sum, p) => sum + p.netProfit, 0) * 100) / 100
 
     return { data, totalNetProfit }
   }

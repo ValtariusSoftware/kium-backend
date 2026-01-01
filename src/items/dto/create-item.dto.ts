@@ -7,7 +7,7 @@ import {
   Min,
   IsOptional,
 } from 'class-validator'
-import { ItemType, BaseUnit } from '../entities/item.entity'
+import { BaseUnit } from '../entities/item.entity'
 
 @InputType()
 export class CreateItemInput {
@@ -15,10 +15,6 @@ export class CreateItemInput {
   @IsNotEmpty()
   @IsString()
   name: string
-
-  @Field(() => ItemType)
-  @IsEnum(ItemType)
-  type: ItemType
 
   @Field(() => Float)
   @IsNumber()
@@ -51,4 +47,14 @@ export class CreateItemInput {
   @IsNumber()
   @Min(0)
   salePrice?: number
+
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
+  barcode?: string
+
+  @Field({ nullable: true }) // El SKU es opcional para el usuario, pero lo usamos como llave
+  @IsOptional()
+  @IsString()
+  sku?: string
 }

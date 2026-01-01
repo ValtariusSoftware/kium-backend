@@ -14,13 +14,6 @@ import { Recipe } from 'src/recipes/entities/recipe.entity'
 
 // --- ENUMS CRUCIALES ---
 
-// 1. Enum para el Tipo de Ítem (Define su comportamiento)
-export enum ItemType {
-  RESELL_PRODUCT = 'RESELL_PRODUCT', // Producto de reventa simple (ej. cigarrillos)
-  FINAL_PRODUCT = 'FINAL_PRODUCT', // Producto hecho con receta (ej. helado)
-  INGREDIENT = 'INGREDIENT', // Materia prima (ej. leche, azúcar)
-}
-
 // 2. Enum para la Unidad Base (Necesario para las recetas)
 export enum BaseUnit {
   // Unidades de Conteo y Agrupación
@@ -61,7 +54,6 @@ export enum BaseUnit {
 }
 
 // 💡 Registrar Enums para GraphQL
-registerEnumType(ItemType, { name: 'ItemType' })
 registerEnumType(BaseUnit, { name: 'BaseUnit' })
 
 // --- ENTIDAD ---
@@ -84,14 +76,6 @@ export class Item {
   @Column('varchar', { length: 255 })
   @Field()
   name: string
-
-  @Column({
-    type: 'enum',
-    enum: ItemType,
-    name: 'type',
-  })
-  @Field(() => ItemType)
-  type: ItemType
 
   // Cantidad disponible, usamos Float para permitir decimales (ej. 1.5 Litros)
   @Column('decimal', { default: 0, scale: 4, precision: 10 })
@@ -146,6 +130,10 @@ export class Item {
   @Field(() => Recipe, { nullable: true })
   recipe?: Recipe
 
+  @Column({ type: 'varchar', length: 100, nullable: true, name: 'barcode' })
+  @Field(() => String, { nullable: true })
+  barcode: string | null
+
   @CreateDateColumn({ type: 'timestamp', name: 'created_at' })
   @Field()
   createdAt: Date
@@ -153,4 +141,24 @@ export class Item {
   @UpdateDateColumn({ type: 'timestamp', name: 'updated_at' })
   @Field()
   updatedAt: Date
+
+  @Column({ unique: false, nullable: true })
+  @Field({ nullable: true })
+  sku: string
+
+  @Column({ name: 'is_saleable', type: 'boolean', default: false })
+  @Field(() => Boolean)
+  isSaleable: boolean
+
+  @Column({ name: 'is_produced', type: 'boolean', default: false })
+  @Field(() => Boolean)
+  isProduced: boolean
+
+  @Column({ name: 'is_purchasable', type: 'boolean', default: true })
+  @Field(() => Boolean)
+  isPurchasable: boolean
+
+  @Column({ name: 'is_ingredient', type: 'boolean', default: false })
+  @Field(() => Boolean)
+  isIngredient: boolean
 }

@@ -1,7 +1,6 @@
 import { Field, InputType, registerEnumType } from '@nestjs/graphql'
-import { ItemType } from '../entities/item.entity'
 // 1. Importa los validadores
-import { IsOptional, IsArray, IsEnum } from 'class-validator'
+import { IsOptional, IsEnum } from 'class-validator'
 
 export enum StockStatusFilter {
   LOW_STOCK = 'LOW_STOCK',
@@ -13,11 +12,18 @@ registerEnumType(StockStatusFilter, { name: 'StockStatusFilter' })
 
 @InputType()
 export class ItemsFilterInput {
-  @Field(() => [ItemType], { nullable: true })
-  @IsOptional() // Permite que no venga el campo
-  @IsArray() // Valida que sea un array
-  @IsEnum(ItemType, { each: true }) // Valida que cada elemento sea un tipo de ítem válido
-  types?: ItemType[]
+  // Ahora filtramos por los nuevos flags
+  @Field({ nullable: true })
+  @IsOptional()
+  isSaleable?: boolean
+
+  @Field({ nullable: true })
+  @IsOptional()
+  isProduced?: boolean
+
+  @Field({ nullable: true })
+  @IsOptional()
+  isIngredient?: boolean
 
   @Field(() => StockStatusFilter, { nullable: true })
   @IsOptional()
