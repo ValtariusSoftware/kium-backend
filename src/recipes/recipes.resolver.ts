@@ -7,6 +7,7 @@ import { JwtGuard } from '../auth/guards/jwt.guard'
 import { CurrentUser } from '../common/decorators/current-user.decorator'
 import { User } from '../users/entities/user.entity'
 import { ID } from '@nestjs/graphql'
+import { UpdateRecipeInput } from './dto/update-recipe.dto'
 
 @Resolver(() => Recipe)
 @UseGuards(JwtGuard)
@@ -21,6 +22,16 @@ export class RecipesResolver {
     @CurrentUser() user: User,
   ): Promise<Recipe> {
     return this.recipesService.create(user.id, createRecipeInput)
+  }
+
+  @Mutation(() => Recipe, {
+    description: 'Actualiza una receta existente y recalcula costos.',
+  })
+  async updateRecipe(
+    @Args('updateRecipeInput') updateRecipeInput: UpdateRecipeInput,
+    @CurrentUser() user: User,
+  ): Promise<Recipe> {
+    return this.recipesService.update(user.id, updateRecipeInput)
   }
 
   @Query(() => Recipe, {

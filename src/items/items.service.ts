@@ -662,4 +662,30 @@ export class ItemsService {
       errors: errorReport,
     }
   }
+
+  /**
+   * Realiza un borrado lógico (Soft Delete) del ítem.
+   * Valida integridad: No permite borrar si el ítem es ingrediente de una receta.
+   */
+  async remove(id: string, userId: string): Promise<boolean> {
+    const item = await this.findOne(id, userId)
+    if (!item) {
+      throw new NotFoundException(`Ítem con ID ${id} no encontrado.`)
+    }
+
+    // 1. Validar si es parte de una receta antes de borrar
+    const isUsed = await this.recipesService.isItemInAnyRecipe(id, userId)
+
+    if (isUsed) {
+      throw new ForbiddenException(
+        `No se puede eliminar "${item.name}" porque es ingrediente de una receta activa.`,
+      )
+    }
+
+    // 2. Borrado lógico (Soft Delete)
+    // Esto setea deleted_at y libera el SKU y el cupo del plan Free.
+    await this.itemsRepository.softRemove(item)
+
+    return true
+  }
 }

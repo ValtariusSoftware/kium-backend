@@ -61,9 +61,10 @@ type Item {
   salePrice: Float
   recipe: Recipe
   barcode: String
+  sku: String
   createdAt: DateTime!
   updatedAt: DateTime!
-  sku: String
+  deletedAt: DateTime
   isSaleable: Boolean!
   isProduced: Boolean!
   isPurchasable: Boolean!
@@ -263,8 +264,14 @@ type Mutation {
   updateItem(updateItemInput: UpdateItemInput!): Item!
   createItemsBulk(inputs: [CreateItemInput!]!): BulkItemResponse!
 
+  """Realiza un borrado lógico de un ítem"""
+  removeItem(id: ID!): Boolean!
+
   """Crea una nueva receta para un FINAL_PRODUCT."""
   createRecipe(createRecipeInput: CreateRecipeInput!): Recipe!
+
+  """Actualiza una receta existente y recalcula costos."""
+  updateRecipe(updateRecipeInput: UpdateRecipeInput!): Recipe!
 
   """
   Registra un movimiento de stock (Compra, Venta, Ajuste, Producción) y actualiza el stock total del Item.
@@ -327,29 +334,21 @@ input CreateRecipeIngredientInput {
   notes: String
 }
 
+input UpdateRecipeInput {
+  finalProductId: ID
+  yieldQuantity: Float
+  ingredients: [CreateRecipeIngredientInput!]
+  id: ID!
+}
+
 input RegisterTransactionInput {
-  """ID del Item afectado por la transacción."""
   itemId: ID!
-
-  """Tipo de movimiento (PURCHASE, SALE, ADJUSTMENT_OUT, etc.)."""
   type: TransactionType!
-
-  """Cantidad del movimiento. Positivo para entrada, Negativo para salida."""
   quantity: Float!
-
-  """
-  Costo unitario del ítem en esta transacción. Obligatorio para entradas de costo (PURCHASE).
-  """
   unitCostSnapshot: Float
-
-  """Precio de venta unitario. Obligatorio para transacciones de tipo SALE."""
   salePriceSnapshot: Float
   autoProduceIfMissing: Boolean = false
-
-  """Referencia a documento (Factura, Recibo, ID de Venta, etc.)."""
   documentRef: String
-
-  """Notas u observación para el movimiento (ej. Razón de ajuste)."""
   notes: String
   saleId: String
 }
