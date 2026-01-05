@@ -9,7 +9,11 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, DataSource, QueryRunner, In } from 'typeorm'
 import { Item } from './entities/item.entity'
 import { AccessLevel } from '../users/entities/user.entity' // Asumiendo que esta es la ruta correcta
-import { CreateItemInput } from './dto/create-item.dto'
+import {
+  BulkItemError,
+  BulkItemResponse,
+  CreateItemInput,
+} from './dto/create-item.dto'
 import { RecipesService } from 'src/recipes/recipes.service'
 import { ProduceItemInput } from './dto/produce-item.dto'
 import { InventoryTransactionsService } from 'src/inventory-transactions/inventory-transactions.service'
@@ -19,11 +23,19 @@ import { GraphQLError } from 'graphql'
 import { ItemsFilterInput, StockStatusFilter } from './dto/items-filter.input'
 import { UpdateItemInput } from './dto/update-item.input'
 
+interface DatabaseError extends Error {
+  code?: string
+  detail?: string
+}
 @Injectable()
 export class ItemsService {
+  // Límites de capacidad total
   private readonly ITEM_LIMIT_FREE = 25
-  private readonly BATCH_LIMIT_FREE = 10 // Límite para operaciones masivas (opcional)
-  // ITEM_LIMIT_PRO_RECIPES = X; // Límite que se podría usar para recetas
+  private readonly ITEM_LIMIT_PRO = 500
+
+  // Límites de operación (Carga Masiva)
+  private readonly BATCH_LIMIT_FREE = 10
+  private readonly BATCH_LIMIT_PRO = 50
 
   constructor(
     @InjectRepository(Item)
@@ -34,6 +46,45 @@ export class ItemsService {
     @Inject(forwardRef(() => InventoryTransactionsService))
     private readonly inventoryTransactionsService: InventoryTransactionsService,
   ) {}
+
+  private calculateItemRoles(
+    costPrice: number | null | undefined,
+    salePrice: number | null | undefined,
+  ) {
+    const hasCost = !!costPrice && costPrice > 0
+    const hasSale = !!salePrice && salePrice > 0
+
+    return {
+      isSaleable: hasSale,
+      isPurchasable: hasCost || (!hasSale && !hasCost), // Comprable si tiene costo O si está vacío (insumo incompleto)
+      isIngredient: hasCost && !hasSale, // Insumo puro
+      isProduced: hasSale && !hasCost, // Producto producido (sin costo manual)
+    }
+  }
+
+  /**
+   * Captura errores específicos de la base de datos (Postgres)
+   * y los transforma en excepciones amigables para el usuario.
+   */
+  private handleDuplicateError(err: unknown): void {
+    // Primero casteamos a nuestro tipo para poder leer las propiedades
+    const dbError = err as DatabaseError
+
+    // Código 23505: Violación de restricción única (Unique Violation)
+    if (dbError.code === '23505') {
+      const detail = dbError.detail || ''
+      let message = 'Ya existe un ítem con esos datos en tu catálogo.'
+
+      if (detail.includes('sku')) {
+        message =
+          'El SKU ingresado ya está registrado. Por favor, usa uno diferente.'
+      } else if (detail.includes('barcode')) {
+        message = 'Ese código de barras ya pertenece a otro producto.'
+      }
+
+      throw new ForbiddenException(message)
+    }
+  }
 
   /**
    * Crea un nuevo ítem, aplicando la validación de límite FREE/PRO,
@@ -53,54 +104,39 @@ export class ItemsService {
     await queryRunner.startTransaction()
 
     try {
-      // 1. Validar Límite
+      // 1. Validar Límite de suscripción
       const itemCount = await queryRunner.manager.count(Item, {
         where: { userId },
       })
-
       if (
         accessLevel === AccessLevel.FREE &&
         itemCount >= this.ITEM_LIMIT_FREE
       ) {
         throw new ForbiddenException(
-          `Límite alcanzado. Como usuario FREE puedes tener hasta ${this.ITEM_LIMIT_FREE} ítems.`,
+          `Límite alcanzado. Máximo ${this.ITEM_LIMIT_FREE} ítems.`,
         )
       }
 
-      // 2. INFERENCIA DE ROLES (Lógica Corregida)
-      // Es Vendible si tiene precio de venta mayor a 0
-      const isSaleable =
-        !!createItemInput.salePrice && createItemInput.salePrice > 0
-
-      // Lógica inteligente para isPurchasable:
-      let isPurchasable = false
-      if (createItemInput.costPrice && createItemInput.costPrice > 0) {
-        // Si el usuario pone un costo, es algo que compra a un proveedor
-        isPurchasable = true
-      } else if (!isSaleable) {
-        // Si no se vende y no tiene costo (ej. un insumo nuevo),
-        // lo dejamos en true para que pueda cargarse en compras.
-        isPurchasable = true
-      }
-      // NOTA: Si isSaleable es true (Pizza) y costPrice es 0, isPurchasable queda en FALSE.
+      // 2. Inferencia de Roles basada en Precios
+      const roles = this.calculateItemRoles(
+        createItemInput.costPrice,
+        createItemInput.salePrice,
+      )
 
       const initialStock = createItemInput.stock || 0.0
 
       const itemDataToCreate = {
         ...createItemInput,
+        ...roles,
         stock: 0.0, // Stock inicial siempre 0 para auditar vía movimiento
         userId,
-        isSaleable,
-        isPurchasable,
-        isProduced: false, // Se activará cuando se cree una Receta
-        isIngredient: false, // Se activará cuando se use como insumo de otro
       }
 
-      // 3. Creación de la Ficha
+      // 3. Creación y Guardado
       const newItem = queryRunner.manager.create(Item, itemDataToCreate)
       const savedItem = await queryRunner.manager.save(newItem)
 
-      // 4. Registrar Movimiento Inicial si aplica
+      // 4. Registro de stock inicial si aplica
       if (initialStock > 0) {
         await this.inventoryTransactionsService.registerMovement(
           userId,
@@ -121,14 +157,13 @@ export class ItemsService {
       const itemWithFinalStock = await this.itemsRepository.findOne({
         where: { id: savedItem.id },
       })
-
-      if (!itemWithFinalStock) {
-        throw new NotFoundException('Error fatal: El ítem no se encontró.')
-      }
+      if (!itemWithFinalStock)
+        throw new NotFoundException('Error: El ítem no se encontró.')
 
       return itemWithFinalStock
     } catch (err) {
       await queryRunner.rollbackTransaction()
+      this.handleDuplicateError(err) // Función para manejar el error 23505 (SKU/Barcode)
       throw err
     } finally {
       await queryRunner.release()
@@ -383,7 +418,6 @@ export class ItemsService {
    */
   async calculateVirtualStock(userId: string, item: Item): Promise<number> {
     // 1. Si el ítem no tiene el flag de producción activado, no calculamos nada.
-    // Esto reemplaza al viejo item.type !== ItemType.FINAL_PRODUCT
     if (!item.isProduced) return 0
 
     // 2. Buscamos la receta vinculada
@@ -399,16 +433,17 @@ export class ItemsService {
     let minPossible = Infinity
 
     for (const ingredient of recipe.ingredients) {
+      // Aseguramos el casteo a número por la naturaleza del tipo numeric en Postgres
       const stockAvailable = Number(ingredient.ingredientItem.stock)
 
       // Cantidad de ingrediente necesaria para 1 unidad de producto final
+      // (Factorizando rendimiento de receta y conversión de unidad del ingrediente)
       const qtyNeededPerUnit =
         ingredient.quantityRequired /
         recipe.yieldQuantity /
         ingredient.ingredientItem.conversionToBaseQty
 
       if (qtyNeededPerUnit > 0) {
-        // ¿Cuántas unidades finales puedo hacer con este ingrediente?
         const possibleWithThisIng = Math.floor(
           stockAvailable / qtyNeededPerUnit,
         )
@@ -489,42 +524,142 @@ export class ItemsService {
       throw new NotFoundException(`Ítem con ID ${id} no encontrado.`)
     }
 
-    // 1. Inferencia de Vendible
-    if (updateData.salePrice !== undefined) {
-      item.isSaleable = !!updateData.salePrice && updateData.salePrice > 0
-    }
+    // 1. Determinar los precios finales (mezclando input con datos existentes)
+    const finalCostPrice =
+      updateData.costPrice !== undefined ? updateData.costPrice : item.costPrice
+    const finalSalePrice =
+      updateData.salePrice !== undefined ? updateData.salePrice : item.salePrice
 
-    // 2. Inferencia de Comprable (Lógica mejorada)
-    if (updateData.costPrice !== undefined) {
-      if (item.isProduced) {
-        // Si el producto tiene receta activa, forzamos isPurchasable en false
-        // independientemente de lo que envíen en costPrice,
-        // porque el costo lo manda la receta.
-        item.isPurchasable = false
-      } else {
-        // Si NO tiene receta, se vuelve comprable si tiene un costo mayor a 0
-        item.isPurchasable = updateData.costPrice > 0
-      }
-    }
+    // 2. Recalcular los roles automáticamente
+    const newRoles = this.calculateItemRoles(finalCostPrice, finalSalePrice)
 
-    // 3. Fusionar cambios
-    Object.assign(item, updateData)
+    // 3. Fusionar cambios: updateData pisa los campos viejos y newRoles actualiza la lógica
+    Object.assign(item, updateData, newRoles)
 
     try {
+      // 4. Persistir cambios
       return await this.itemsRepository.save(item)
-    } catch (error) {
-      if (error.code === '23505') {
-        const detail = error.detail || ''
-        if (detail.includes('barcode')) {
-          throw new GraphQLError(
-            'El código de barras ya está asignado a otro producto.',
+    } catch (err) {
+      // 5. Manejar colisiones de SKU o Barcode
+      this.handleDuplicateError(err)
+      throw err
+    }
+  }
+
+  /**
+   * Crea múltiples ítems permitiendo cargas parciales.
+   * Refresca los datos finales desde la DB para devolver el stock real post-transacción.
+   */
+  async createBulk(
+    userId: string,
+    accessLevel: AccessLevel,
+    inputs: CreateItemInput[],
+  ): Promise<BulkItemResponse> {
+    const batchLimit =
+      accessLevel === AccessLevel.PRO
+        ? this.BATCH_LIMIT_PRO
+        : this.BATCH_LIMIT_FREE
+
+    if (inputs.length > batchLimit) {
+      throw new ForbiddenException(
+        `Límite de carga masiva excedido (${batchLimit} ítems).`,
+      )
+    }
+
+    const currentCount = await this.itemsRepository.count({ where: { userId } })
+    const capacityLimit =
+      accessLevel === AccessLevel.PRO
+        ? this.ITEM_LIMIT_PRO
+        : this.ITEM_LIMIT_FREE
+
+    const createdItemsIds: string[] = [] // Guardamos IDs para el refresco final
+    const errorReport: BulkItemError[] = []
+
+    for (let i = 0; i < inputs.length; i++) {
+      const input = inputs[i]
+
+      // Validación de capacidad en tiempo real durante el bucle
+      if (currentCount + createdItemsIds.length >= capacityLimit) {
+        errorReport.push({
+          row: i + 1,
+          name: input.name,
+          error: 'Límite de capacidad del plan alcanzado.',
+        })
+        continue
+      }
+
+      const queryRunner = this.dataSource.createQueryRunner()
+      await queryRunner.connect()
+      await queryRunner.startTransaction()
+
+      try {
+        const roles = this.calculateItemRoles(input.costPrice, input.salePrice)
+
+        const newItem = queryRunner.manager.create(Item, {
+          ...input,
+          ...roles,
+          stock: 0, // Inicia en 0 para ser incrementado por el movimiento
+          userId,
+        })
+
+        const savedItem = await queryRunner.manager.save(newItem)
+
+        // Si hay stock inicial, registramos el movimiento
+        if ((input.stock || 0) > 0) {
+          await this.inventoryTransactionsService.registerMovement(
+            userId,
+            {
+              itemId: savedItem.id,
+              type: TransactionType.INITIAL_INVENTORY,
+              quantity: input.stock,
+              unitCostSnapshot: input.costPrice || 0,
+              documentRef: 'BULK_LOAD',
+              notes: 'Carga masiva inicial.',
+            },
+            queryRunner,
           )
         }
-        if (detail.includes('sku')) {
-          throw new GraphQLError('El SKU ya está asignado a otro producto.')
+
+        await queryRunner.commitTransaction()
+        createdItemsIds.push(savedItem.id) // Guardamos el ID del éxito
+      } catch (err: unknown) {
+        await queryRunner.rollbackTransaction()
+
+        const dbError = err as DatabaseError
+        let friendlyError = 'Error interno al procesar la fila'
+
+        if (dbError.code === '23505') {
+          const detail = dbError.detail || ''
+          if (detail.includes('sku')) friendlyError = 'SKU duplicado'
+          else if (detail.includes('barcode'))
+            friendlyError = 'Código de barras duplicado'
+        } else if (dbError.message) {
+          friendlyError = dbError.message
         }
+
+        errorReport.push({
+          row: i + 1,
+          name: input.name,
+          error: friendlyError,
+        })
+      } finally {
+        await queryRunner.release()
       }
-      throw error
+    }
+
+    // --- REFRESCO FINAL ---
+    // Consultamos los ítems creados para obtener el stock actualizado desde la DB
+    let finalCreatedItems: Item[] = []
+    if (createdItemsIds.length > 0) {
+      finalCreatedItems = await this.itemsRepository.find({
+        where: { id: In(createdItemsIds) },
+        order: { name: 'ASC' },
+      })
+    }
+
+    return {
+      created: finalCreatedItems,
+      errors: errorReport,
     }
   }
 }

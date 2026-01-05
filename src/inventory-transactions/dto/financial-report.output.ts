@@ -1,21 +1,26 @@
 import { ObjectType, Field, Float } from '@nestjs/graphql'
+import { Transform } from 'class-transformer'
 
 @ObjectType()
 export class FinancialDataPoint {
   @Field()
-  label: string // Puede ser "2025-12-19" (día) o "Enero 2025" (mes)
+  label: string
 
   @Field(() => Float)
-  revenue: number // Barra 1: Ganancia Bruta (Ventas)
+  @Transform(({ value }) => Number(value.toFixed(2)))
+  revenue: number
 
   @Field(() => Float)
-  cost: number // Barra 2: Costos
+  @Transform(({ value }) => Number(value.toFixed(2)))
+  cost: number
 
   @Field(() => Float)
-  losses: number // Barra 3: Mermas
+  @Transform(({ value }) => Number(value.toFixed(2)))
+  losses: number
 
   @Field(() => Float)
-  netProfit: number // El resultado final (Revenue - Cost - Losses)
+  @Transform(({ value }) => Number(value.toFixed(2)))
+  netProfit: number // Revenue - Cost - Losses
 }
 
 @ObjectType()
@@ -23,7 +28,7 @@ export class FinancialReportResponse {
   @Field(() => [FinancialDataPoint])
   data: FinancialDataPoint[]
 
-  // Totales generales del periodo seleccionado
   @Field(() => Float)
+  @Transform(({ value }) => Number(value.toFixed(2)))
   totalNetProfit: number
 }

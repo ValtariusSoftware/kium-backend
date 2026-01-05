@@ -12,22 +12,26 @@ import {
 } from 'typeorm'
 import { User } from '../../users/entities/user.entity'
 import { InventoryTransaction } from '../../inventory-transactions/entities/inventory-transaction.entity'
+// Importamos el transformer desde la nueva ubicación centralizada
+import { ColumnNumericTransformer } from 'src/common/transformers/numeric.transformer'
+
+const numericTransformer = new ColumnNumericTransformer()
 
 @ObjectType()
-@Entity({ name: 'sales', schema: 'stock_control' }) // 👈 Especificamos esquema
+@Entity({ name: 'sales', schema: 'stock_control' })
 export class Sale {
   @Field(() => ID)
   @PrimaryGeneratedColumn('uuid')
   id: string
 
   @Field(() => Float)
-  @Column({
+  @Column('decimal', {
     name: 'total_amount',
-    type: 'numeric',
     precision: 12,
     scale: 2,
     default: 0,
-  }) // 👈 Coincide con migración
+    transformer: numericTransformer, // 👈 CRUCIAL: Para recibir un número y no un string
+  })
   totalAmount: number
 
   @Field()
@@ -35,10 +39,10 @@ export class Sale {
   createdAt: Date
 
   @ManyToOne(() => User)
-  @JoinColumn({ name: 'user_id' }) // 👈 Importante para el Join
+  @JoinColumn({ name: 'user_id' })
   user: User
 
-  @Column({ name: 'user_id', type: 'varchar', length: 255 }) // 👈 Coincide con tu DDL de Items/Transactions
+  @Column({ name: 'user_id', type: 'varchar', length: 255 })
   userId: string
 
   @Field(() => [InventoryTransaction], { nullable: true })

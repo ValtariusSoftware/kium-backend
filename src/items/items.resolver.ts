@@ -9,7 +9,7 @@ import {
 } from '@nestjs/graphql'
 import { ItemsService } from './items.service'
 import { Item } from './entities/item.entity'
-import { CreateItemInput } from './dto/create-item.dto'
+import { BulkItemResponse, CreateItemInput } from './dto/create-item.dto'
 import { User } from '../users/entities/user.entity'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { ProduceItemInput } from './dto/produce-item.dto'
@@ -106,5 +106,15 @@ export class ItemsResolver {
     @CurrentUser() user: User,
   ): Promise<Item> {
     return this.itemsService.update(user.id, updateItemInput)
+  }
+
+  @Mutation(() => BulkItemResponse, { name: 'createItemsBulk' }) // <--- Cambio aquí
+  async createItemsBulk(
+    @Args('inputs', { type: () => [CreateItemInput] })
+    inputs: CreateItemInput[],
+    @CurrentUser() user: User,
+  ): Promise<BulkItemResponse> {
+    // <--- Y aquí
+    return this.itemsService.createBulk(user.id, user.accessLevel, inputs)
   }
 }

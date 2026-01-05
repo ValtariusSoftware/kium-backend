@@ -7,8 +7,11 @@ import {
 } from 'typeorm'
 import { ObjectType, Field, ID, Float } from '@nestjs/graphql'
 import { Recipe } from './recipe.entity'
-import { Item } from '../../items/entities/item.entity'
-import { BaseUnit } from '../../items/entities/item.entity' // Reutilizamos el Enum BaseUnit
+import { Item, BaseUnit } from '../../items/entities/item.entity'
+
+import { ColumnNumericTransformer } from 'src/common/transformers/numeric.transformer'
+
+const numericTransformer = new ColumnNumericTransformer()
 
 @Entity({ name: 'recipe_ingredients', schema: 'stock_control' })
 @ObjectType()
@@ -17,7 +20,6 @@ export class RecipeIngredient {
   @Field(() => ID)
   id: string
 
-  // 1. Relación con la Receta (Encabezado)
   @ManyToOne(() => Recipe, (recipe) => recipe.ingredients, {
     onDelete: 'CASCADE',
   })
@@ -27,30 +29,31 @@ export class RecipeIngredient {
   @Column('uuid', { name: 'recipe_id' })
   recipeId: string
 
-  // 2. Relación con el Ingrediente (Ítem)
-  @ManyToOne(() => Item, { onDelete: 'RESTRICT' }) // No podemos eliminar un ingrediente si se usa en una receta
+  @ManyToOne(() => Item, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'ingredient_item_id' })
   ingredientItem: Item
 
   @Column('uuid', { name: 'ingredient_item_id' })
   ingredientItemId: string
 
-  // Cantidad requerida (ej. 1.5)
-  @Column('decimal', { scale: 4, precision: 10, name: 'quantity_required' })
+  @Column('decimal', {
+    precision: 12,
+    scale: 4,
+    name: 'quantity_required',
+    transformer: numericTransformer,
+  })
   @Field(() => Float)
   quantityRequired: number
 
-  // Unidad de la cantidad requerida (Debe ser la BaseUnit del ítem, ej. LITER)
   @Column({
     type: 'enum',
-    enum: BaseUnit,
-    enumName: 'BaseUnit',
+    enum: BaseUnit, // Esto es lo que le faltaba según el error
+    enumName: 'BaseUnit', // Nombre del tipo en Postgres (esquema stock_control)
     name: 'unit_of_measure',
   })
   @Field(() => BaseUnit)
   unitOfMeasure: BaseUnit
 
-  // Nota (Opcional)
   @Column('varchar', { length: 255, nullable: true })
   @Field({ nullable: true })
   notes?: string

@@ -1,4 +1,3 @@
-// inventory-transactions/entities/inventory-transaction.entity.ts
 import {
   Entity,
   Column,
@@ -12,7 +11,11 @@ import { ObjectType, Field, ID, Float } from '@nestjs/graphql'
 import { TransactionType } from '../enums/transaction-type.enum'
 import { Sale } from 'src/sales/entities/sale.entity'
 
-@Entity({ name: 'inventory_transactions', schema: 'stock_control' }) // Asegurando el esquema
+import { ColumnNumericTransformer } from 'src/common/transformers/numeric.transformer'
+
+const numericTransformer = new ColumnNumericTransformer()
+
+@Entity({ name: 'inventory_transactions', schema: 'stock_control' })
 @ObjectType()
 export class InventoryTransaction {
   @PrimaryGeneratedColumn('uuid')
@@ -22,9 +25,9 @@ export class InventoryTransaction {
   @Column({ type: 'uuid', name: 'item_id' })
   itemId: string
 
-  @ManyToOne(() => Item, { nullable: false }) // Relación de TypeORM
+  @ManyToOne(() => Item, { nullable: false })
   @JoinColumn({ name: 'item_id' })
-  @Field(() => Item, { nullable: true }) // 💡 GraphQL Field: Siempre con función de flecha
+  @Field(() => Item, { nullable: true })
   item: Item
 
   @Column({ type: 'varchar', length: 255, name: 'user_id' })
@@ -38,34 +41,38 @@ export class InventoryTransaction {
   @Field(() => TransactionType)
   type: TransactionType
 
-  // Cantidad del movimiento: Positiva para entradas, Negativa para salidas (ej. -50.0)
-  @Column('decimal', { scale: 4, precision: 12 })
+  @Column('decimal', {
+    precision: 12,
+    scale: 4,
+    transformer: numericTransformer,
+  })
   @Field(() => Float)
   quantity: number
 
-  // Costo unitario al momento de la transacción (CLAVE para FIFO/Promedio)
-  // Se usa para calcular el costo de las entradas (PURCHASE) o el costo de las salidas (SALE/CONSUMPTION)
-  @Column('decimal', { scale: 4, precision: 10, name: 'unit_cost_snapshot' })
+  @Column('decimal', {
+    precision: 12,
+    scale: 2, // Dinero: 2 decimales
+    name: 'unit_cost_snapshot',
+    transformer: numericTransformer,
+  })
   @Field(() => Float)
   unitCostSnapshot: number
 
-  // NUEVO CAMPO: Precio de venta al momento de la transacción
   @Column('decimal', {
-    scale: 4,
-    precision: 10,
+    precision: 12,
+    scale: 2, // Dinero: 2 decimales
     name: 'sale_price_snapshot',
     nullable: true,
     default: 0,
+    transformer: numericTransformer,
   })
   @Field(() => Float, { nullable: true })
   salePriceSnapshot?: number
 
-  // 💡 CORRECCIÓN: Añadimos () => String explícitamente y usamos ?:
   @Column('varchar', { length: 255, nullable: true, name: 'document_ref' })
   @Field(() => String, { nullable: true })
   documentRef?: string
 
-  // 💡 CORRECCIÓN: Añadimos () => String explícitamente y usamos ?:
   @Column('text', { nullable: true })
   @Field(() => String, { nullable: true })
   notes?: string
@@ -74,7 +81,7 @@ export class InventoryTransaction {
   @Field()
   createdAt: Date
 
-  @ManyToOne('Sale', 'items', { nullable: true }) // 'Sale' como string es más seguro en circulares
+  @ManyToOne('Sale', 'items', { nullable: true })
   @JoinColumn({ name: 'sale_id' })
   @Field(() => Sale, { nullable: true })
   sale?: Sale
