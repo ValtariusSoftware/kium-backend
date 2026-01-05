@@ -155,6 +155,17 @@ enum TransactionType {
   RETURN_FROM_SALE
 }
 
+type BulkItemError {
+  row: Int!
+  name: String!
+  error: String!
+}
+
+type BulkItemResponse {
+  created: [Item!]!
+  errors: [BulkItemError!]!
+}
+
 type TransactionHistoryItem {
   id: ID!
   type: TransactionType!
@@ -250,6 +261,7 @@ type Mutation {
   adjustItemStock(adjustStockInput: AdjustStockInput!): Item!
   produceItemsBatch(inputs: [ProduceItemInput!]!): [Item!]!
   updateItem(updateItemInput: UpdateItemInput!): Item!
+  createItemsBulk(inputs: [CreateItemInput!]!): BulkItemResponse!
 
   """Crea una nueva receta para un FINAL_PRODUCT."""
   createRecipe(createRecipeInput: CreateRecipeInput!): Recipe!

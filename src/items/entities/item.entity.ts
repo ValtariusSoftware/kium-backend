@@ -11,50 +11,40 @@ import {
 import { ObjectType, Field, ID, registerEnumType, Float } from '@nestjs/graphql'
 import { User } from '../../users/entities/user.entity'
 import { Recipe } from 'src/recipes/entities/recipe.entity'
+import { ColumnNumericTransformer } from 'src/common/transformers/numeric.transformer'
 
-// --- ENUMS CRUCIALES ---
+// --- ENUMS ---
 
-// 2. Enum para la Unidad Base (Necesario para las recetas)
 export enum BaseUnit {
-  // Unidades de Conteo y Agrupación
-  UNIT = 'UNIT', // Para items individuales (ej. una silla, una botella)
-  PACK = 'PACK', // Paquetes (ej. cigarrillos, paquetes de galletas)
-  BOX = 'BOX', // Cajas o cartones
-  ROLL = 'ROLL', // Rollos (ej. papel de aluminio, cinta)
-  BAG = 'BAG', // Bolsas o sacos (ej. cemento, harina)
-  PALLET = 'PALLET', // Palets (para inventario a gran escala)
-
-  // Unidades de Longitud (Dimensiones Lineales)
-  METER = 'METER', // Metros (cables, telas, tuberías)
+  UNIT = 'UNIT',
+  PACK = 'PACK',
+  BOX = 'BOX',
+  ROLL = 'ROLL',
+  BAG = 'BAG',
+  PALLET = 'PALLET',
+  METER = 'METER',
   CENTIMETER = 'CENTIMETER',
   MILLIMETER = 'MILLIMETER',
-  FOOT = 'FOOT', // Pies
-  YARD = 'YARD', // Yardas
-
-  // Unidades de Superficie
-  SQUARE_METER = 'SQUARE_METER', // Metros cuadrados (pisos, azulejos)
-
-  // Unidades de Masa (Peso)
+  FOOT = 'FOOT',
+  YARD = 'YARD',
+  SQUARE_METER = 'SQUARE_METER',
   KILOGRAM = 'KILOGRAM',
   GRAM = 'GRAM',
   MILLIGRAM = 'MILLIGRAM',
-  POUND = 'POUND', // Libras
-  OUNCE = 'OUNCE', // Onzas
-
-  // Unidades de Volumen (Líquidos y Capacidad)
+  POUND = 'POUND',
+  OUNCE = 'OUNCE',
   LITER = 'LITER',
   MILLILITER = 'MILLILITER',
-  GALLON = 'GALLON', // Galón
-  FL_OUNCE = 'FL_OUNCE', // Onza fluida
-  CUBIC_METER = 'CUBIC_METER', // Metro cúbico (para gran volumen)
-
-  // Unidades de Tiempo / Servicio
-  HOUR = 'HOUR', // Para servicios o mano de obra
+  GALLON = 'GALLON',
+  FL_OUNCE = 'FL_OUNCE',
+  CUBIC_METER = 'CUBIC_METER',
+  HOUR = 'HOUR',
   DAY = 'DAY',
 }
 
-// 💡 Registrar Enums para GraphQL
 registerEnumType(BaseUnit, { name: 'BaseUnit' })
+
+const numericTransformer = new ColumnNumericTransformer()
 
 // --- ENTIDAD ---
 
@@ -68,7 +58,6 @@ export class Item {
   @Column({ type: 'varchar', length: 255, name: 'user_id' })
   userId: string
 
-  // Relación: Muchos Ítems pertenecen a un Usuario
   @ManyToOne(() => User, (user) => user.items)
   @JoinColumn({ name: 'user_id' })
   user: User
@@ -77,8 +66,12 @@ export class Item {
   @Field()
   name: string
 
-  // Cantidad disponible, usamos Float para permitir decimales (ej. 1.5 Litros)
-  @Column('decimal', { default: 0, scale: 4, precision: 10 })
+  @Column('decimal', {
+    default: 0,
+    precision: 12,
+    scale: 4,
+    transformer: numericTransformer,
+  })
   @Field(() => Float)
   stock: number
 
@@ -88,40 +81,43 @@ export class Item {
     name: 'base_unit',
   })
   @Field(() => BaseUnit)
-  baseUnit: BaseUnit // Ej. 'LITER'
+  baseUnit: BaseUnit
 
-  // Factor de conversión: 1 unidad de stock = X unidades base (ej. 1 Caja = 12 Litros)
   @Column('decimal', {
-    scale: 4,
-    precision: 10,
     name: 'conversion_to_base_qty',
+    precision: 12,
+    scale: 4,
+    transformer: numericTransformer,
   })
   @Field(() => Float)
   conversionToBaseQty: number
 
   @Column('decimal', {
-    nullable: true,
-    scale: 2,
-    precision: 10,
     name: 'min_stock_alert',
+    nullable: true,
+    precision: 12,
+    scale: 2,
+    transformer: numericTransformer,
   })
   @Field(() => Float, { nullable: true })
   minStockAlert: number | null
 
   @Column('decimal', {
-    nullable: true,
-    scale: 2,
-    precision: 10,
     name: 'cost_price',
+    nullable: true,
+    precision: 12,
+    scale: 2,
+    transformer: numericTransformer,
   })
   @Field(() => Float, { nullable: true })
   costPrice: number | null
 
   @Column('decimal', {
-    nullable: true,
-    scale: 2,
-    precision: 10,
     name: 'sale_price',
+    nullable: true,
+    precision: 12,
+    scale: 2,
+    transformer: numericTransformer,
   })
   @Field(() => Float, { nullable: true })
   salePrice: number | null

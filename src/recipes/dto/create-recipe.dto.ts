@@ -9,7 +9,7 @@ import {
   IsString,
   IsOptional,
 } from 'class-validator'
-import { Type } from 'class-transformer'
+import { Transform, Type } from 'class-transformer'
 import { BaseUnit } from '../../items/entities/item.entity'
 
 // 1. DTO para las líneas de Ingredientes
@@ -17,16 +17,17 @@ import { BaseUnit } from '../../items/entities/item.entity'
 export class CreateRecipeIngredientInput {
   @Field(() => ID)
   @IsUUID()
-  ingredientItemId: string // ID del Ítem que es el ingrediente
+  ingredientItemId: string
 
   @Field(() => Float)
   @IsNumber()
   @Min(0.0001)
+  @Transform(({ value }) => Number(parseFloat(value).toFixed(4))) // 👈 4 decimales para insumos
   quantityRequired: number
 
   @Field(() => BaseUnit)
   @IsEnum(BaseUnit)
-  unitOfMeasure: BaseUnit // La unidad base (ej. LITER, KILOGRAM)
+  unitOfMeasure: BaseUnit
 
   @Field({ nullable: true })
   @IsString()
@@ -34,21 +35,21 @@ export class CreateRecipeIngredientInput {
   notes?: string
 }
 
-// 2. DTO principal para la Receta
 @InputType()
 export class CreateRecipeInput {
   @Field(() => ID)
   @IsUUID()
-  finalProductId: string // ID del Ítem de tipo FINAL_PRODUCT
+  finalProductId: string
 
   @Field(() => Float)
   @IsNumber()
   @Min(0.0001)
-  yieldQuantity: number // Cantidad producida (ej. 1, si es 1 unidad de helado)
+  @Transform(({ value }) => Number(parseFloat(value).toFixed(4)))
+  yieldQuantity: number
 
   @Field(() => [CreateRecipeIngredientInput])
   @IsArray()
   @ValidateNested({ each: true })
-  @Type(() => CreateRecipeIngredientInput) // Necesario para que class-transformer funcione
+  @Type(() => CreateRecipeIngredientInput)
   ingredients: CreateRecipeIngredientInput[]
 }

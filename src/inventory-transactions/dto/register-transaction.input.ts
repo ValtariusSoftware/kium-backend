@@ -9,45 +9,40 @@ import {
   Min,
   IsBoolean,
 } from 'class-validator'
+import { Transform } from 'class-transformer'
 import { TransactionType } from '../enums/transaction-type.enum'
 
 @InputType()
 export class RegisterTransactionInput {
-  @Field(() => ID, { description: 'ID del Item afectado por la transacción.' })
+  @Field(() => ID)
   @IsUUID()
   itemId: string
 
-  @Field(() => TransactionType, {
-    description: 'Tipo de movimiento (PURCHASE, SALE, ADJUSTMENT_OUT, etc.).',
-  })
+  @Field(() => TransactionType)
   @IsIn(Object.values(TransactionType))
   type: TransactionType
 
-  @Field(() => Float, {
-    description:
-      'Cantidad del movimiento. Positivo para entrada, Negativo para salida.',
-  })
+  @Field(() => Float)
   @IsNumber()
-  @Min(-9999999.9999, { message: 'La cantidad debe ser un número válido.' }) // Acepta negativos grandes
+  @Min(-9999999.9999)
+  @Transform(({ value }) => Number(parseFloat(value).toFixed(4))) // 👈 Cantidad: 4 decimales
   quantity: number
 
-  @Field(() => Float, {
-    description:
-      'Costo unitario del ítem en esta transacción. Obligatorio para entradas de costo (PURCHASE).',
-    nullable: true,
-  })
+  @Field(() => Float, { nullable: true })
   @IsNumber()
-  @IsPositive({ message: 'El costo unitario debe ser positivo.' })
+  @IsPositive()
   @IsOptional()
+  @Transform(({ value }) =>
+    value ? Number(parseFloat(value).toFixed(2)) : value,
+  ) // 👈 Costo: 2 decimales
   unitCostSnapshot?: number
 
-  @Field(() => Float, {
-    description:
-      'Precio de venta unitario. Obligatorio para transacciones de tipo SALE.',
-    nullable: true,
-  })
+  @Field(() => Float, { nullable: true })
   @IsNumber()
   @IsOptional()
+  @Transform(({ value }) =>
+    value ? Number(parseFloat(value).toFixed(2)) : value,
+  ) // 👈 Precio: 2 decimales
   salePriceSnapshot?: number
 
   @Field({ nullable: true, defaultValue: false })
@@ -55,19 +50,12 @@ export class RegisterTransactionInput {
   @IsOptional()
   autoProduceIfMissing?: boolean
 
-  @Field({
-    nullable: true,
-    description: 'Referencia a documento (Factura, Recibo, ID de Venta, etc.).',
-  })
+  @Field({ nullable: true })
   @IsString()
   @IsOptional()
   documentRef?: string
 
-  @Field({
-    nullable: true,
-    description:
-      'Notas u observación para el movimiento (ej. Razón de ajuste).',
-  })
+  @Field({ nullable: true })
   @IsString()
   @IsOptional()
   notes?: string
