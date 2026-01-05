@@ -3,10 +3,12 @@ import {
   Column,
   CreateDateColumn,
   UpdateDateColumn,
+  DeleteDateColumn,
   ManyToOne,
   JoinColumn,
   PrimaryGeneratedColumn,
   OneToOne,
+  Unique,
 } from 'typeorm'
 import { ObjectType, Field, ID, registerEnumType, Float } from '@nestjs/graphql'
 import { User } from '../../users/entities/user.entity'
@@ -49,6 +51,9 @@ const numericTransformer = new ColumnNumericTransformer()
 // --- ENTIDAD ---
 
 @Entity({ name: 'items', schema: 'stock_control' })
+// Aseguramos que el SKU y el Barcode sean únicos solo dentro del catálogo de cada usuario
+@Unique('UQ_ITEM_SKU_PER_USER', ['userId', 'sku'])
+@Unique('UQ_ITEM_BARCODE_PER_USER', ['userId', 'barcode'])
 @ObjectType()
 export class Item {
   @PrimaryGeneratedColumn('uuid')
@@ -130,6 +135,10 @@ export class Item {
   @Field(() => String, { nullable: true })
   barcode: string | null
 
+  @Column({ type: 'varchar', length: 50, nullable: true, name: 'sku' })
+  @Field(() => String, { nullable: true })
+  sku: string | null
+
   @CreateDateColumn({ type: 'timestamp', name: 'created_at' })
   @Field()
   createdAt: Date
@@ -138,9 +147,9 @@ export class Item {
   @Field()
   updatedAt: Date
 
-  @Column({ unique: false, nullable: true })
+  @DeleteDateColumn({ type: 'timestamp', name: 'deleted_at', nullable: true })
   @Field({ nullable: true })
-  sku: string
+  deletedAt?: Date
 
   @Column({ name: 'is_saleable', type: 'boolean', default: false })
   @Field(() => Boolean)

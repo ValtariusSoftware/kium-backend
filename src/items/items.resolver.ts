@@ -6,6 +6,7 @@ import {
   ResolveField,
   Float,
   Parent,
+  ID,
 } from '@nestjs/graphql'
 import { ItemsService } from './items.service'
 import { Item } from './entities/item.entity'
@@ -116,5 +117,16 @@ export class ItemsResolver {
   ): Promise<BulkItemResponse> {
     // <--- Y aquí
     return this.itemsService.createBulk(user.id, user.accessLevel, inputs)
+  }
+
+  @Mutation(() => Boolean, {
+    name: 'removeItem',
+    description: 'Realiza un borrado lógico de un ítem',
+  })
+  async removeItem(
+    @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user: User, // Tu decorador de usuario autenticado
+  ): Promise<boolean> {
+    return this.itemsService.remove(id, user.id)
   }
 }

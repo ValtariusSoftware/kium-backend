@@ -1,4 +1,4 @@
-import { InputType, Field, Float } from '@nestjs/graphql'
+import { InputType, Field, Float, ObjectType, Int } from '@nestjs/graphql'
 import {
   IsNotEmpty,
   IsEnum,
@@ -8,7 +8,7 @@ import {
   IsOptional,
 } from 'class-validator'
 import { Transform } from 'class-transformer'
-import { BaseUnit } from '../entities/item.entity'
+import { BaseUnit, Item } from '../entities/item.entity'
 
 @InputType()
 export class CreateItemInput {
@@ -69,4 +69,25 @@ export class CreateItemInput {
   @IsOptional()
   @IsString()
   sku?: string
+}
+
+@ObjectType()
+export class BulkItemError {
+  @Field(() => Int)
+  row: number // El número de fila donde ocurrió el error
+
+  @Field()
+  name: string // El nombre del producto que falló
+
+  @Field()
+  error: string // El mensaje de error amigable (ej: "SKU duplicado")
+}
+
+@ObjectType()
+export class BulkItemResponse {
+  @Field(() => [Item])
+  created: Item[] // Lista de ítems que sí se guardaron correctamente
+
+  @Field(() => [BulkItemError])
+  errors: BulkItemError[] // Lista de fallos con su detalle
 }
