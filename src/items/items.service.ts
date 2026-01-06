@@ -21,7 +21,9 @@ import { TransactionType } from 'src/inventory-transactions/enums/transaction-ty
 import { AdjustStockInput } from './dto/adjust-stock.input'
 import { GraphQLError } from 'graphql'
 import { ItemsFilterInput, StockStatusFilter } from './dto/items-filter.input'
-import { UpdateItemInput } from './dto/update-item.input'
+import { BulkUpdateItemInput, UpdateItemInput } from './dto/update-item.input'
+import { PaginatedItems } from './types/paginated-items.type'
+import { PaginationInput } from 'src/common/dto/pagination.input'
 
 interface DatabaseError extends Error {
   code?: string
@@ -173,7 +175,11 @@ export class ItemsService {
   /**
    * Obtiene la lista de ítems filtrada según los roles (flags) y estados de stock.
    */
-  async getItems(userId: string, filters?: ItemsFilterInput): Promise<Item[]> {
+  async getItems(
+    userId: string,
+    filters?: ItemsFilterInput,
+    pagination?: PaginationInput,
+  ): Promise<PaginatedItems> {
     const query = this.itemsRepository
       .createQueryBuilder('item')
       .where('item.userId = :userId', { userId })
@@ -217,8 +223,28 @@ export class ItemsService {
       }
     }
 
-    query.orderBy('item.name', 'ASC')
-    return query.getMany()
+    // 3. Búsqueda por texto (Nombre, SKU o Barcode)
+    if (filters?.search) {
+      // Los paréntesis son CLAVE aquí para que Postgres use el índice correctamente
+      // junto con el filtro de userId
+      query.andWhere(
+        '(item.name ILIKE :search OR item.sku ILIKE :search OR item.barcode ILIKE :search)',
+        { search: `%${filters.search}%` },
+      )
+    }
+
+    const limit = pagination?.limit ?? PaginationInput.DEFAULT_LIMIT
+    const offset = pagination?.offset ?? PaginationInput.DEFAULT_OFFSET
+
+    query.orderBy('item.name', 'ASC').take(limit).skip(offset)
+
+    // getManyAndCount devuelve los items Y el total de la tabla en un solo viaje
+    const [items, total] = await query.getManyAndCount()
+
+    return {
+      items,
+      total,
+    }
   }
 
   /**
@@ -555,30 +581,34 @@ export class ItemsService {
     accessLevel: AccessLevel,
     inputs: CreateItemInput[],
   ): Promise<BulkItemResponse> {
+    // 1. Validar límite del "Paquete" (Batch)
     const batchLimit =
       accessLevel === AccessLevel.PRO
         ? this.BATCH_LIMIT_PRO
         : this.BATCH_LIMIT_FREE
-
     if (inputs.length > batchLimit) {
       throw new ForbiddenException(
         `Límite de carga masiva excedido (${batchLimit} ítems).`,
       )
     }
 
-    const currentCount = await this.itemsRepository.count({ where: { userId } })
+    // 2. Validar capacidad total del Plan
     const capacityLimit =
       accessLevel === AccessLevel.PRO
         ? this.ITEM_LIMIT_PRO
         : this.ITEM_LIMIT_FREE
+    const currentCount = await this.itemsRepository.count({ where: { userId } })
 
-    const createdItemsIds: string[] = [] // Guardamos IDs para el refresco final
+    const createdItemsIds: string[] = []
     const errorReport: BulkItemError[] = []
+
+    // --- OPTIMIZACIÓN: Un solo QueryRunner para todo el proceso ---
+    const queryRunner = this.dataSource.createQueryRunner()
+    await queryRunner.connect()
 
     for (let i = 0; i < inputs.length; i++) {
       const input = inputs[i]
 
-      // Validación de capacidad en tiempo real durante el bucle
       if (currentCount + createdItemsIds.length >= capacityLimit) {
         errorReport.push({
           row: i + 1,
@@ -588,8 +618,7 @@ export class ItemsService {
         continue
       }
 
-      const queryRunner = this.dataSource.createQueryRunner()
-      await queryRunner.connect()
+      // Iniciamos transacción por CADA ítem para permitir carga parcial
       await queryRunner.startTransaction()
 
       try {
@@ -598,13 +627,12 @@ export class ItemsService {
         const newItem = queryRunner.manager.create(Item, {
           ...input,
           ...roles,
-          stock: 0, // Inicia en 0 para ser incrementado por el movimiento
+          stock: 0,
           userId,
         })
 
         const savedItem = await queryRunner.manager.save(newItem)
 
-        // Si hay stock inicial, registramos el movimiento
         if ((input.stock || 0) > 0) {
           await this.inventoryTransactionsService.registerMovement(
             userId,
@@ -621,20 +649,17 @@ export class ItemsService {
         }
 
         await queryRunner.commitTransaction()
-        createdItemsIds.push(savedItem.id) // Guardamos el ID del éxito
-      } catch (err: unknown) {
+        createdItemsIds.push(savedItem.id)
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      } catch (err: any) {
         await queryRunner.rollbackTransaction()
 
-        const dbError = err as DatabaseError
-        let friendlyError = 'Error interno al procesar la fila'
-
-        if (dbError.code === '23505') {
-          const detail = dbError.detail || ''
-          if (detail.includes('sku')) friendlyError = 'SKU duplicado'
-          else if (detail.includes('barcode'))
-            friendlyError = 'Código de barras duplicado'
-        } else if (dbError.message) {
-          friendlyError = dbError.message
+        // Manejo de errores duplicados con tu lógica de códigos Postgres
+        let friendlyError = err.message || 'Error interno'
+        if (err.code === '23505') {
+          friendlyError = err.detail.includes('sku')
+            ? 'SKU duplicado'
+            : 'Código de barras duplicado'
         }
 
         errorReport.push({
@@ -642,25 +667,22 @@ export class ItemsService {
           name: input.name,
           error: friendlyError,
         })
-      } finally {
-        await queryRunner.release()
       }
+      // NOTA: No hacemos release() acá, esperamos al final del bucle
     }
+
+    await queryRunner.release() // Cerramos la conexión al terminar todo
 
     // --- REFRESCO FINAL ---
-    // Consultamos los ítems creados para obtener el stock actualizado desde la DB
-    let finalCreatedItems: Item[] = []
-    if (createdItemsIds.length > 0) {
-      finalCreatedItems = await this.itemsRepository.find({
-        where: { id: In(createdItemsIds) },
-        order: { name: 'ASC' },
-      })
-    }
+    const finalCreatedItems =
+      createdItemsIds.length > 0
+        ? await this.itemsRepository.find({
+            where: { id: In(createdItemsIds) },
+            order: { name: 'ASC' },
+          })
+        : []
 
-    return {
-      created: finalCreatedItems,
-      errors: errorReport,
-    }
+    return { created: finalCreatedItems, errors: errorReport }
   }
 
   /**
@@ -687,5 +709,168 @@ export class ItemsService {
     await this.itemsRepository.softRemove(item)
 
     return true
+  }
+
+  /**
+   * Elimina múltiples ítems validando que el usuario sea PRO.
+   */
+  async removeBulk(
+    userId: string,
+    accessLevel: AccessLevel,
+    ids: string[],
+  ): Promise<boolean> {
+    // 1. Validación de Nivel de Acceso
+    if (accessLevel !== AccessLevel.PRO) {
+      throw new ForbiddenException(
+        'La eliminación masiva es una función exclusiva para usuarios PRO.',
+      )
+    }
+
+    // 2. Validación de Límite de Lote (Batch)
+    // Reutilizamos la constante de 50 que definiste arriba
+    if (ids.length > this.BATCH_LIMIT_PRO) {
+      throw new ForbiddenException(
+        `No puedes eliminar más de ${this.BATCH_LIMIT_PRO} ítems a la vez.`,
+      )
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner()
+    await queryRunner.connect()
+    await queryRunner.startTransaction()
+
+    try {
+      for (const id of ids) {
+        // Buscamos el ítem dentro de la transacción
+        const item = await queryRunner.manager.findOne(Item, {
+          where: { id, userId },
+        })
+
+        if (!item) {
+          throw new NotFoundException(`Ítem con ID ${id} no encontrado.`)
+        }
+
+        // Validar si es ingrediente de alguna receta
+        const isUsed = await this.recipesService.isItemInAnyRecipe(id, userId)
+        if (isUsed) {
+          throw new ForbiddenException(
+            `Operación cancelada: "${item.name}" es ingrediente de una receta activa.`,
+          )
+        }
+
+        // Soft Delete (Borrado lógico) dentro de la transacción
+        await queryRunner.manager.softRemove(item)
+      }
+
+      // Si todo salió bien con los N ítems, confirmamos
+      await queryRunner.commitTransaction()
+      return true
+    } catch (err) {
+      // Si uno falla (ej. es ingrediente), no se borra ninguno
+      await queryRunner.rollbackTransaction()
+      throw err
+    } finally {
+      await queryRunner.release()
+    }
+  }
+
+  /**
+   * Actualiza múltiples ítems validando que el usuario sea PRO.
+   */
+  async updateBulk(
+    userId: string,
+    accessLevel: AccessLevel,
+    inputs: BulkUpdateItemInput[],
+  ): Promise<Item[]> {
+    // 1. Validación de Nivel de Acceso
+    if (accessLevel !== AccessLevel.PRO) {
+      throw new ForbiddenException(
+        'La actualización masiva es exclusiva para usuarios PRO.',
+      )
+    }
+
+    // 2. Validación de Límite de Lote (Batch) - Usando la constante
+    if (inputs.length > this.BATCH_LIMIT_PRO) {
+      throw new ForbiddenException(
+        `No puedes actualizar más de ${this.BATCH_LIMIT_PRO} ítems a la vez.`,
+      )
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner()
+    await queryRunner.connect()
+    await queryRunner.startTransaction()
+
+    try {
+      let currentRow = 0
+
+      for (const input of inputs) {
+        currentRow++
+
+        const item = await queryRunner.manager.findOne(Item, {
+          where: { id: input.id, userId },
+        })
+
+        if (!item) {
+          throw new Error(
+            `Fila ${currentRow}: El ítem con ID "${input.id}" no existe en tu catálogo.`,
+          )
+        }
+
+        // --- Limpieza y Mapeo ---
+        const cleanData: Partial<BulkUpdateItemInput> = {}
+        const keys = Object.keys(input) as Array<keyof BulkUpdateItemInput>
+        for (const key of keys) {
+          if (key !== 'id' && input[key] !== undefined) {
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            ;(cleanData as any)[key] = input[key]
+          }
+        }
+
+        // --- Recalcular roles si cambian precios ---
+        if (
+          cleanData.costPrice !== undefined ||
+          cleanData.salePrice !== undefined
+        ) {
+          const finalCost = cleanData.costPrice ?? item.costPrice
+          const finalSale = cleanData.salePrice ?? item.salePrice
+          const newRoles = this.calculateItemRoles(
+            finalCost as number | null,
+            finalSale as number | null,
+          )
+          Object.assign(item, newRoles)
+        }
+
+        Object.assign(item, cleanData)
+
+        // Guardado dentro de la transacción (valida constraints)
+        await queryRunner.manager.save(item)
+      }
+
+      // Si todo el bucle terminó sin errores, confirmamos
+      await queryRunner.commitTransaction()
+
+      // Devolvemos los datos frescos
+      return this.itemsRepository.find({
+        where: { id: In(inputs.map((i) => i.id)), userId },
+        order: { name: 'ASC' },
+      })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    } catch (err: any) {
+      // Si falla uno, rollback de TODO el lote
+      await queryRunner.rollbackTransaction()
+
+      let friendlyError = err.message || 'Error en la actualización'
+
+      if (err.code === '23505') {
+        const field = err.detail.includes('sku') ? 'SKU' : 'Código de barras'
+        friendlyError = `Error de duplicado: Un ${field} en tu lista ya existe en otro producto.`
+      }
+
+      throw new ForbiddenException({
+        message: 'La actualización masiva falló y no se guardó ningún cambio.',
+        detail: friendlyError,
+      })
+    } finally {
+      await queryRunner.release()
+    }
   }
 }

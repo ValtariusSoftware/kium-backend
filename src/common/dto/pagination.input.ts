@@ -3,15 +3,25 @@ import { IsInt, IsOptional, Min } from 'class-validator'
 
 @InputType()
 export class PaginationInput {
-  @Field(() => Int, { defaultValue: 6, nullable: true }) // Agregá nullable: true acá
+  // Definimos constantes estáticas para que sean accesibles desde cualquier lado
+  static readonly DEFAULT_LIMIT = 6
+  static readonly DEFAULT_OFFSET = 0
+
+  @Field(() => Int, {
+    defaultValue: PaginationInput.DEFAULT_LIMIT,
+    nullable: true,
+  })
   @IsInt()
   @Min(1)
   @IsOptional()
-  limit: number = 6
+  limit: number = PaginationInput.DEFAULT_LIMIT
 
-  @Field(() => Int, { defaultValue: 0, nullable: true }) // Agregá nullable: true acá
+  @Field(() => Int, {
+    defaultValue: PaginationInput.DEFAULT_OFFSET,
+    nullable: true,
+  })
   @IsInt()
   @Min(0)
   @IsOptional()
-  offset: number = 0
+  offset: number = PaginationInput.DEFAULT_OFFSET
 }
