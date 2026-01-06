@@ -16,7 +16,9 @@ import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { ProduceItemInput } from './dto/produce-item.dto'
 import { AdjustStockInput } from './dto/adjust-stock.input'
 import { ItemsFilterInput } from './dto/items-filter.input'
-import { UpdateItemInput } from './dto/update-item.input'
+import { BulkUpdateItemInput, UpdateItemInput } from './dto/update-item.input'
+import { PaginatedItems } from './types/paginated-items.type'
+import { PaginationInput } from 'src/common/dto/pagination.input'
 
 @Resolver(() => Item)
 export class ItemsResolver {
@@ -31,14 +33,13 @@ export class ItemsResolver {
     return this.itemsService.create(user.id, user.accessLevel, createItemInput)
   }
 
-  @Query(() => [Item], { name: 'items' })
+  @Query(() => PaginatedItems, { name: 'items' }) // <--- Ahora devuelve la "caja"
   async getItems(
     @CurrentUser() user: User,
-    // Agregamos los filtros como argumento opcional
     @Args('filters', { nullable: true }) filters?: ItemsFilterInput,
-  ): Promise<Item[]> {
-    // Ahora el service recibe el userId y el objeto de filtros completo
-    return this.itemsService.getItems(user.id, filters)
+    @Args('pagination', { nullable: true }) pagination?: PaginationInput, // Tu DTO
+  ): Promise<PaginatedItems> {
+    return this.itemsService.getItems(user.id, filters, pagination)
   }
 
   @Mutation(() => Item, {
@@ -128,5 +129,24 @@ export class ItemsResolver {
     @CurrentUser() user: User, // Tu decorador de usuario autenticado
   ): Promise<boolean> {
     return this.itemsService.remove(id, user.id)
+  }
+
+  // Mutación para Borrado Masivo
+  @Mutation(() => Boolean, { name: 'removeItemsBulk' })
+  async removeItemsBulk(
+    @Args('ids', { type: () => [ID] }) ids: string[],
+    @CurrentUser() user: User,
+  ): Promise<boolean> {
+    return this.itemsService.removeBulk(user.id, user.accessLevel, ids)
+  }
+
+  // Mutación para Actualización Masiva
+  @Mutation(() => [Item], { name: 'updateItemsBulk' })
+  async updateItemsBulk(
+    @Args('inputs', { type: () => [BulkUpdateItemInput] })
+    inputs: BulkUpdateItemInput[],
+    @CurrentUser() user: User,
+  ): Promise<Item[]> {
+    return this.itemsService.updateBulk(user.id, user.accessLevel, inputs)
   }
 }

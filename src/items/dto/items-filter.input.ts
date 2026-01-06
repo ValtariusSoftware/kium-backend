@@ -29,4 +29,8 @@ export class ItemsFilterInput {
   @IsOptional()
   @IsEnum(StockStatusFilter) // Valida que sea un valor del enum de stock
   stockStatus?: StockStatusFilter
+
+  @Field({ nullable: true })
+  @IsOptional()
+  search?: string
 }

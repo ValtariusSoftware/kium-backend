@@ -167,6 +167,11 @@ type BulkItemResponse {
   errors: [BulkItemError!]!
 }
 
+type PaginatedItems {
+  items: [Item!]!
+  total: Int!
+}
+
 type TransactionHistoryItem {
   id: ID!
   type: TransactionType!
@@ -209,7 +214,7 @@ type DashboardSummary {
 
 type Query {
   users: [User!]!
-  items(filters: ItemsFilterInput): [Item!]!
+  items(filters: ItemsFilterInput, pagination: PaginationInput): PaginatedItems!
   lowStockReport: [Item!]!
   getItemByBarcode(barcode: String!): Item
 
@@ -231,6 +236,7 @@ input ItemsFilterInput {
   isProduced: Boolean
   isIngredient: Boolean
   stockStatus: StockStatusFilter
+  search: String
 }
 
 enum StockStatusFilter {
@@ -239,14 +245,14 @@ enum StockStatusFilter {
   AVAILABLE
 }
 
-enum ReportGroupBy {
-  DAY
-  MONTH
-}
-
 input PaginationInput {
   limit: Int = 6
   offset: Int = 0
+}
+
+enum ReportGroupBy {
+  DAY
+  MONTH
 }
 
 type Mutation {
@@ -266,6 +272,8 @@ type Mutation {
 
   """Realiza un borrado lógico de un ítem"""
   removeItem(id: ID!): Boolean!
+  removeItemsBulk(ids: [ID!]!): Boolean!
+  updateItemsBulk(inputs: [BulkUpdateItemInput!]!): [Item!]!
 
   """Crea una nueva receta para un FINAL_PRODUCT."""
   createRecipe(createRecipeInput: CreateRecipeInput!): Recipe!
@@ -319,6 +327,18 @@ input UpdateItemInput {
   barcode: String
   sku: String
   id: ID!
+}
+
+input BulkUpdateItemInput {
+  id: ID!
+  name: String
+  baseUnit: BaseUnit
+  conversionToBaseQty: Float
+  minStockAlert: Float
+  costPrice: Float
+  salePrice: Float
+  barcode: String
+  sku: String
 }
 
 input CreateRecipeInput {
