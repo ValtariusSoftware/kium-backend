@@ -6,7 +6,7 @@ import {
   Inject,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, Repository } from 'typeorm'
+import { DataSource, In, Repository } from 'typeorm'
 import { Recipe } from './entities/recipe.entity'
 import { CreateRecipeInput } from './dto/create-recipe.dto'
 import { ItemsService } from '../items/items.service'
@@ -349,5 +349,14 @@ export class RecipesService {
       .getCount()
 
     return count > 0
+  }
+
+  async findBatchByFinalProductIds(ids: string[]): Promise<Recipe[]> {
+    return this.recipesRepository.find({
+      where: {
+        finalProductId: In(ids),
+      },
+      relations: ['ingredients', 'ingredients.ingredientItem'],
+    })
   }
 }
