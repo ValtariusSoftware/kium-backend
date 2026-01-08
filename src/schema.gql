@@ -69,11 +69,7 @@ type Item {
   isProduced: Boolean!
   isPurchasable: Boolean!
   isIngredient: Boolean!
-
-  """Cantidad extra que se puede fabricar con los insumos actuales."""
   canProduceQuantity: Float!
-
-  """Suma del stock físico actual más lo que se puede producir."""
   totalAvailableStock: Float!
 }
 
@@ -172,6 +168,32 @@ type PaginatedItems {
   total: Int!
 }
 
+type IngredientConsumption {
+  name: String!
+  totalUsedForThisItem: Float!
+  unit: String!
+}
+
+type SimulatedItem {
+  itemId: String!
+  itemName: String!
+  requestedQuantity: Float!
+  ingredientsUsage: [IngredientConsumption!]!
+  hasInsufficientStock: Boolean!
+}
+
+type StockAlert {
+  ingredientName: String!
+  missingQuantity: Float!
+  unit: String!
+}
+
+type BatchSimulationResponse {
+  isViable: Boolean!
+  items: [SimulatedItem!]!
+  alerts: [StockAlert!]!
+}
+
 type TransactionHistoryItem {
   id: ID!
   type: TransactionType!
@@ -213,16 +235,16 @@ type DashboardSummary {
 }
 
 type Query {
-  users: [User!]!
-  items(filters: ItemsFilterInput, pagination: PaginationInput): PaginatedItems!
-  lowStockReport: [Item!]!
-  getItemByBarcode(barcode: String!): Item
-
   """Obtiene la receta por el ID del producto final."""
   recipeByProduct(finalProductId: ID!): Recipe!
+  items(filters: ItemsFilterInput, pagination: PaginationInput): PaginatedItems!
+  lowStockReport(pagination: PaginationInput): PaginatedItems!
+  simulateProductionBatch(inputs: [ProduceItemInput!]!): BatchSimulationResponse!
+  getItemByBarcode(barcode: String!): Item
   inventoryTransactionsByItem(itemId: ID!): [InventoryTransaction!]!
   itemTransactionHistory(itemId: ID!): [TransactionHistoryItem!]!
   financialReport(startDate: DateTime!, endDate: DateTime!, groupBy: ReportGroupBy!): FinancialReportResponse!
+  users: [User!]!
   sales: [Sale!]!
   getHomeDashboard: DashboardSummary!
   getTopSellingDetailed(pagination: PaginationInput): [TopProduct!]!
@@ -250,17 +272,22 @@ input PaginationInput {
   offset: Int = 0
 }
 
+input ProduceItemInput {
+  recipeId: ID!
+  quantityToProduce: Float!
+}
+
 enum ReportGroupBy {
   DAY
   MONTH
 }
 
 type Mutation {
-  """Autenticación con el ID Token de Google/Firebase."""
-  googleAuth(idToken: String!): AuthPayload!
+  """Crea una nueva receta para un FINAL_PRODUCT."""
+  createRecipe(createRecipeInput: CreateRecipeInput!): Recipe!
 
-  """Usa el Refresh Token para obtener un nuevo Access Token."""
-  refreshAccessToken(refreshToken: String!): RefreshPayload!
+  """Actualiza una receta existente y recalcula costos."""
+  updateRecipe(updateRecipeInput: UpdateRecipeInput!): Recipe!
   createItem(createItemInput: CreateItemInput!): Item!
 
   """Ejecuta una producción, ajustando stock."""
@@ -275,12 +302,6 @@ type Mutation {
   removeItemsBulk(ids: [ID!]!): Boolean!
   updateItemsBulk(inputs: [BulkUpdateItemInput!]!): [Item!]!
 
-  """Crea una nueva receta para un FINAL_PRODUCT."""
-  createRecipe(createRecipeInput: CreateRecipeInput!): Recipe!
-
-  """Actualiza una receta existente y recalcula costos."""
-  updateRecipe(updateRecipeInput: UpdateRecipeInput!): Recipe!
-
   """
   Registra un movimiento de stock (Compra, Venta, Ajuste, Producción) y actualiza el stock total del Item.
   """
@@ -288,8 +309,34 @@ type Mutation {
 
   """Registra múltiples movimientos de stock de forma atómica."""
   registerInventoryMovements(registerTransactionInputs: [RegisterTransactionInput!]!): [InventoryTransaction!]!
+
+  """Autenticación con el ID Token de Google/Firebase."""
+  googleAuth(idToken: String!): AuthPayload!
+
+  """Usa el Refresh Token para obtener un nuevo Access Token."""
+  refreshAccessToken(refreshToken: String!): RefreshPayload!
   createSale(createSaleInput: CreateSaleInput!): Sale!
   voidSale(saleId: String!): Sale!
+}
+
+input CreateRecipeInput {
+  finalProductId: ID!
+  yieldQuantity: Float!
+  ingredients: [CreateRecipeIngredientInput!]!
+}
+
+input CreateRecipeIngredientInput {
+  ingredientItemId: ID!
+  quantityRequired: Float!
+  unitOfMeasure: BaseUnit!
+  notes: String
+}
+
+input UpdateRecipeInput {
+  finalProductId: ID
+  yieldQuantity: Float
+  ingredients: [CreateRecipeIngredientInput!]
+  id: ID!
 }
 
 input CreateItemInput {
@@ -302,11 +349,6 @@ input CreateItemInput {
   salePrice: Float
   barcode: String
   sku: String
-}
-
-input ProduceItemInput {
-  recipeId: ID!
-  quantityToProduce: Float!
 }
 
 input AdjustStockInput {
@@ -339,26 +381,6 @@ input BulkUpdateItemInput {
   salePrice: Float
   barcode: String
   sku: String
-}
-
-input CreateRecipeInput {
-  finalProductId: ID!
-  yieldQuantity: Float!
-  ingredients: [CreateRecipeIngredientInput!]!
-}
-
-input CreateRecipeIngredientInput {
-  ingredientItemId: ID!
-  quantityRequired: Float!
-  unitOfMeasure: BaseUnit!
-  notes: String
-}
-
-input UpdateRecipeInput {
-  finalProductId: ID
-  yieldQuantity: Float
-  ingredients: [CreateRecipeIngredientInput!]
-  id: ID!
 }
 
 input RegisterTransactionInput {

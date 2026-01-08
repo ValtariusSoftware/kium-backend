@@ -24,6 +24,12 @@ import { ItemsFilterInput, StockStatusFilter } from './dto/items-filter.input'
 import { BulkUpdateItemInput, UpdateItemInput } from './dto/update-item.input'
 import { PaginatedItems } from './types/paginated-items.type'
 import { PaginationInput } from 'src/common/dto/pagination.input'
+import {
+  BatchSimulationResponse,
+  IngredientConsumption,
+  SimulatedItem,
+  StockAlert,
+} from './dto/simulate-production.output'
 
 interface DatabaseError extends Error {
   code?: string
@@ -290,7 +296,7 @@ export class ItemsService {
 
       const factor = input.quantityToProduce / recipe.yieldQuantity
 
-      // --- 🛡️ 1. PASO DE VALIDACIÓN PREVIA (STOCK COMPLETO) ---
+      // --- 🛡️ 1. PASO DE VALIDACIÓN PREVIA (STOCK ACTUALIZADO) ---
       const missingIngredients: string[] = []
 
       for (const ingredient of recipe.ingredients) {
@@ -298,7 +304,13 @@ export class ItemsService {
         const stockQtyToConsume =
           baseQtyToConsume / ingredient.ingredientItem.conversionToBaseQty
 
-        const currentStock = Number(ingredient.ingredientItem.stock)
+        // AJUSTE CRÍTICO: Consultamos el stock actual de la DB usando el runner.
+        // Esto permite que el Batch "vea" consumos previos dentro de la misma transacción.
+        const dbItem = await queryRunner.manager.findOne(Item, {
+          where: { id: ingredient.ingredientItemId },
+        })
+
+        const currentStock = Number(dbItem?.stock || 0)
 
         if (currentStock < stockQtyToConsume) {
           missingIngredients.push(ingredient.ingredientItem.name)
@@ -328,7 +340,6 @@ export class ItemsService {
           ingredient.ingredientItem.costPrice || 0,
         )
 
-        // Registrar movimiento de salida (CONSUMPTION)
         await this.inventoryTransactionsService.registerMovement(
           userId,
           {
@@ -347,12 +358,8 @@ export class ItemsService {
       const stockQtyProduced =
         input.quantityToProduce / recipe.finalProduct.conversionToBaseQty
 
-      // Usamos el costo actual de la ficha maestra (el que seteaste en 1950)
-      // para el registro de la transacción, en lugar de recalcularlo erróneamente aquí.
       const currentFinalProductCost = Number(recipe.finalProduct.costPrice || 0)
 
-      // Registrar movimiento de entrada (PRODUCTION_IN)
-      // Nota: Ya NO hacemos queryRunner.manager.update(Item, ...) aquí.
       await this.inventoryTransactionsService.registerMovement(
         userId,
         {
@@ -370,7 +377,8 @@ export class ItemsService {
         await queryRunner.commitTransaction()
       }
 
-      const updatedItem = await this.itemsRepository.findOne({
+      // Recargamos el ítem final (usando el runner si estamos en batch) para devolverlo
+      const updatedItem = await queryRunner.manager.findOne(Item, {
         where: { id: recipe.finalProductId },
       })
 
@@ -428,14 +436,53 @@ export class ItemsService {
   /**
    * Obtiene la lista de ítems cuyo stock está por debajo del límite de alerta.
    */
-  async getLowStockItems(userId: string): Promise<Item[]> {
-    return this.itemsRepository
+  async getLowStockItems(
+    userId: string,
+    pagination?: PaginationInput,
+  ): Promise<PaginatedItems> {
+    const limit = pagination?.limit ?? PaginationInput.DEFAULT_LIMIT
+    const offset = pagination?.offset ?? PaginationInput.DEFAULT_OFFSET
+    const query = this.itemsRepository
       .createQueryBuilder('item')
       .where('item.userId = :userId', { userId })
       .andWhere('item.minStockAlert IS NOT NULL')
       .andWhere('item.stock <= item.minStockAlert')
-      .orderBy('item.stock', 'ASC') // Priorizar los que tienen menos
-      .getMany()
+      .orderBy('item.stock', 'ASC') // Prioridad: los que están más cerca de cero o negativos
+      .addOrderBy('item.name', 'ASC') // Segundo criterio: orden alfabético
+      .take(limit)
+      .skip(offset)
+
+    const [items, total] = await query.getManyAndCount()
+
+    return {
+      items,
+      total,
+    }
+  }
+
+  // Este método solo hace la cuenta, NO va a la base de datos.
+  // Es súper rápido porque recibe la receta con todo cargado.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  runVirtualStockMath(recipe: any): number {
+    let minPossible = Infinity
+
+    for (const ingredient of recipe.ingredients) {
+      const stockAvailable = Number(ingredient.ingredientItem.stock)
+      const qtyNeededPerUnit =
+        ingredient.quantityRequired /
+        recipe.yieldQuantity /
+        ingredient.ingredientItem.conversionToBaseQty
+
+      if (qtyNeededPerUnit > 0) {
+        const possibleWithThisIng = Math.floor(
+          stockAvailable / qtyNeededPerUnit,
+        )
+        if (possibleWithThisIng < minPossible) {
+          minPossible = possibleWithThisIng
+        }
+      }
+    }
+    return minPossible === Infinity ? 0 : minPossible
   }
 
   /**
@@ -527,6 +574,90 @@ export class ItemsService {
     } finally {
       await runner.release()
     }
+  }
+
+  /**
+    Simula el consumo de ingredientes en cascada para un lote de producción,
+
+    permitiendo validar la viabilidad y detectar faltantes sin afectar el stock. 
+  */
+  async simulateBatch(
+    userId: string,
+    inputs: ProduceItemInput[],
+  ): Promise<BatchSimulationResponse> {
+    const itemsResponse: SimulatedItem[] = []
+    const alerts: StockAlert[] = []
+    let isViable = true
+
+    // Mapa para trackear el stock disponible durante la simulación "cascada"
+    const virtualStockMap = new Map<string, number>()
+
+    for (const input of inputs) {
+      // 1. Buscamos la receta usando el recipeId que viene del DTO
+      // Nota: Usamos findOne de recipesService para traer las relaciones necesarias
+      const recipe = await this.recipesService.findOne(input.recipeId, userId)
+
+      if (!recipe) continue
+
+      // El producto final de esta receta
+      const finalProduct = recipe.finalProduct
+      const ingredientsUsage: IngredientConsumption[] = []
+      let itemCanBeProduced = true
+
+      // 2. Analizamos los ingredientes de la receta
+      for (const recipeIng of recipe.ingredients) {
+        const ingItem = recipeIng.ingredientItem
+        // Usamos 'quantityToProduce' que es el nombre en tu DTO
+        const totalRequired =
+          Number(recipeIng.quantityRequired) * input.quantityToProduce
+
+        // Inicializamos el stock virtual si es la primera vez que vemos este ingrediente
+        if (!virtualStockMap.has(ingItem.id)) {
+          virtualStockMap.set(ingItem.id, Number(ingItem.stock))
+        }
+
+        const currentAvailable = virtualStockMap.get(ingItem.id) ?? 0
+
+        if (currentAvailable < totalRequired) {
+          itemCanBeProduced = false
+          isViable = false
+
+          // Registrar alerta de faltante global
+          const alreadyAlerted = alerts.find(
+            (a) => a.ingredientName === ingItem.name,
+          )
+          if (!alreadyAlerted) {
+            alerts.push({
+              ingredientName: ingItem.name,
+              missingQuantity: Number(
+                (totalRequired - currentAvailable).toFixed(2),
+              ),
+              unit: recipeIng.unitOfMeasure,
+            })
+          }
+        } else {
+          // Restamos para el siguiente producto que pueda necesitar este mismo ingrediente
+          virtualStockMap.set(ingItem.id, currentAvailable - totalRequired)
+        }
+
+        ingredientsUsage.push({
+          name: ingItem.name,
+          totalUsedForThisItem: Number(totalRequired.toFixed(4)),
+          unit: recipeIng.unitOfMeasure,
+        })
+      }
+
+      // 3. Agregamos el resultado de este ítem al desglose
+      itemsResponse.push({
+        itemId: recipe.finalProductId,
+        itemName: finalProduct?.name || 'Producto Desconocido',
+        requestedQuantity: input.quantityToProduce,
+        ingredientsUsage,
+        hasInsufficientStock: !itemCanBeProduced,
+      })
+    }
+
+    return { isViable, items: itemsResponse, alerts }
   }
 
   /**

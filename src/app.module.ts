@@ -18,6 +18,7 @@ import { RecipesModule } from './recipes/recipes.module'
 import { InventoryTransactionsModule } from './inventory-transactions/inventory-transactions.module'
 import { SalesModule } from './sales/sales.module'
 import { DashboardModule } from './dashboard/dashboard.module'
+import { RecipesService } from './recipes/recipes.service'
 // 🚨 ELIMINAR ESTA LÍNEA -> import { JwtStrategy } from './auth/strategies/jwt.strategy'
 
 @Module({
@@ -31,9 +32,12 @@ import { DashboardModule } from './dashboard/dashboard.module'
     }),
     GraphQLModule.forRootAsync({
       driver: ApolloDriver,
-      inject: [ConfigService],
-      useFactory: (configService: ConfigService) =>
-        graphqlConfig(configService),
+      imports: [RecipesModule], // Asegurate que esté importado para poder usar su Service
+      inject: [ConfigService, RecipesService], // <--- Inyectamos el RecipesService
+      useFactory: (
+        configService: ConfigService,
+        recipesService: RecipesService,
+      ) => graphqlConfig(configService, recipesService), // <--- Se lo pasamos a la función
     }),
 
     FirebaseModule,
