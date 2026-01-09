@@ -43,15 +43,6 @@ export class InventoryTransactionsResolver {
     )
   }
 
-  // QUERY para ver el historial de un Item específico
-  @Query(() => [InventoryTransaction], { name: 'inventoryTransactionsByItem' })
-  findAllByItem(
-    @Args('itemId', { type: () => ID }) itemId: string,
-    @CurrentUser() user: User,
-  ): Promise<InventoryTransaction[]> {
-    return this.inventoryTransactionsService.findAllByItem(itemId, user.id)
-  }
-
   @Query(() => [TransactionHistoryItem], { name: 'itemTransactionHistory' })
   async getHistory(
     @Args('itemId', { type: () => ID }) itemId: string,
