@@ -218,6 +218,11 @@ type FinancialReportResponse {
   totalNetProfit: Float!
 }
 
+type PaginatedSales {
+  sales: [Sale!]!
+  total: Int!
+}
+
 type TopProduct {
   name: String!
   quantitySold: Float!
@@ -241,11 +246,11 @@ type Query {
   lowStockReport(pagination: PaginationInput): PaginatedItems!
   simulateProductionBatch(inputs: [ProduceItemInput!]!): BatchSimulationResponse!
   getItemByBarcode(barcode: String!): Item
-  inventoryTransactionsByItem(itemId: ID!): [InventoryTransaction!]!
   itemTransactionHistory(itemId: ID!): [TransactionHistoryItem!]!
   financialReport(startDate: DateTime!, endDate: DateTime!, groupBy: ReportGroupBy!): FinancialReportResponse!
   users: [User!]!
-  sales: [Sale!]!
+  recentSales(userId: String!, pagination: PaginationInput): PaginatedSales!
+  salesByDate(userId: String!, date: String!, pagination: PaginationInput): PaginatedSales!
   getHomeDashboard: DashboardSummary!
   getTopSellingDetailed(pagination: PaginationInput): [TopProduct!]!
   getLeastSellingDetailed(pagination: PaginationInput): [TopProduct!]!
