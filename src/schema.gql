@@ -4,6 +4,8 @@
 
 type RecipeIngredient {
   id: ID!
+  ingredientItem: Item!
+  ingredientItemId: ID!
   quantityRequired: Float!
   unitOfMeasure: BaseUnit!
   notes: String
@@ -38,6 +40,7 @@ enum BaseUnit {
 
 type Recipe {
   id: ID!
+  finalProduct: Item!
   userId: String!
   yieldQuantity: Float!
   ingredients: [RecipeIngredient!]!
@@ -194,6 +197,11 @@ type BatchSimulationResponse {
   alerts: [StockAlert!]!
 }
 
+type PaginatedRecipes {
+  recipes: [Recipe!]!
+  total: Int!
+}
+
 type TransactionHistoryItem {
   id: ID!
   type: TransactionType!
@@ -242,6 +250,9 @@ type DashboardSummary {
 type Query {
   """Obtiene la receta por el ID del producto final."""
   recipeByProduct(finalProductId: ID!): Recipe!
+
+  """Obtiene todas las recetas del usuario de forma paginada."""
+  myRecipes(pagination: PaginationInput): PaginatedRecipes!
   items(filters: ItemsFilterInput, pagination: PaginationInput): PaginatedItems!
   lowStockReport(pagination: PaginationInput): PaginatedItems!
   simulateProductionBatch(inputs: [ProduceItemInput!]!): BatchSimulationResponse!
@@ -258,6 +269,11 @@ type Query {
   getMonthlySalesDetailed(pagination: PaginationInput): [Sale!]!
 }
 
+input PaginationInput {
+  limit: Int = 6
+  offset: Int = 0
+}
+
 input ItemsFilterInput {
   isSaleable: Boolean
   isProduced: Boolean
@@ -270,11 +286,6 @@ enum StockStatusFilter {
   LOW_STOCK
   OUT_OF_STOCK
   AVAILABLE
-}
-
-input PaginationInput {
-  limit: Int = 6
-  offset: Int = 0
 }
 
 input ProduceItemInput {
@@ -293,6 +304,11 @@ type Mutation {
 
   """Actualiza una receta existente y recalcula costos."""
   updateRecipe(updateRecipeInput: UpdateRecipeInput!): Recipe!
+
+  """
+  Elimina una receta y actualiza los roles (isProduced/isIngredient) de los ítems.
+  """
+  removeRecipe(id: ID!): Boolean!
   createItem(createItemInput: CreateItemInput!): Item!
 
   """Ejecuta una producción, ajustando stock."""
