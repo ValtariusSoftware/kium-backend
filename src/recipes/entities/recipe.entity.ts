@@ -28,6 +28,7 @@ export class Recipe {
   // 1. Relación con el Producto Final
   @OneToOne(() => Item, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'final_product_id' })
+  @Field(() => Item)
   finalProduct: Item
 
   @Column('uuid', { name: 'final_product_id', unique: true })

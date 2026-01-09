@@ -13,6 +13,7 @@ import { ItemsService } from '../items/items.service'
 import { Item } from 'src/items/entities/item.entity'
 import { UpdateRecipeInput } from './dto/update-recipe.dto'
 import { RecipeIngredient } from './entities/recipe-ingredient.entity'
+import { PaginationInput } from 'src/common/dto/pagination.input'
 
 @Injectable()
 export class RecipesService {
@@ -358,5 +359,24 @@ export class RecipesService {
       },
       relations: ['ingredients', 'ingredients.ingredientItem'],
     })
+  }
+
+  /**
+   * Obtiene todas las recetas del usuario con paginación.
+   * Útil para el catálogo de recetas en la App.
+   */
+  async findAll(
+    userId: string,
+    pagination: PaginationInput,
+  ): Promise<{ recipes: Recipe[]; total: number }> {
+    const [recipes, total] = await this.recipesRepository.findAndCount({
+      where: { userId },
+      relations: ['finalProduct', 'ingredients', 'ingredients.ingredientItem'],
+      order: { createdAt: 'DESC' },
+      take: pagination.limit,
+      skip: pagination.offset,
+    })
+
+    return { recipes, total }
   }
 }
