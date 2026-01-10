@@ -17,6 +17,7 @@ import {
 import { ReportGroupBy } from './enums/report-group-by.enum'
 import { ItemsService } from 'src/items/items.service'
 import { GraphQLError } from 'graphql'
+import { AdjustStockInput } from './dto/adjust-stock.input'
 
 @Injectable()
 export class InventoryTransactionsService {
@@ -255,6 +256,48 @@ export class InventoryTransactionsService {
       throw err
     } finally {
       await runner.release()
+    }
+  }
+
+  /**
+   * Realiza un ajuste manual de stock para un ítem.
+   */
+  async adjustStock(userId: string, input: AdjustStockInput): Promise<Item> {
+    const queryRunner = this.dataSource.createQueryRunner()
+    await queryRunner.connect()
+    await queryRunner.startTransaction()
+
+    try {
+      // CORRECCIÓN 1: Usar this.itemsService.findOne (y pasar los 2 argumentos: id y userId)
+      const item = await this.itemsService.findOne(input.itemId, userId)
+      if (!item) throw new NotFoundException('Ítem no encontrado.')
+
+      const absoluteQuantity = Math.abs(input.quantity)
+
+      // CORRECCIÓN 2: Llamar a registerMovement del propio servicio (this.registerMovement)
+      await this.registerMovement(
+        userId,
+        {
+          itemId: item.id,
+          type: input.type,
+          quantity: absoluteQuantity,
+          documentRef: 'MANUAL-ADJUST',
+          notes: input.reason || 'Ajuste manual de inventario.',
+          unitCostSnapshot: item.costPrice || 0,
+        },
+        queryRunner,
+      )
+
+      await queryRunner.commitTransaction()
+
+      // CORRECCIÓN 3: Refrescar el item usando el service y el userId
+      const updatedItem = await this.itemsService.findOne(item.id, userId)
+      return updatedItem!
+    } catch (err) {
+      await queryRunner.rollbackTransaction()
+      throw err
+    } finally {
+      await queryRunner.release()
     }
   }
 }

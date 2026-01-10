@@ -379,4 +379,91 @@ export class RecipesService {
 
     return { recipes, total }
   }
+
+  // Este método solo hace la cuenta, NO va a la base de datos.
+  // Es súper rápido porque recibe la receta con todo cargado.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  runVirtualStockMath(recipe: any): number {
+    if (!recipe || !recipe.ingredients || recipe.ingredients.length === 0)
+      return 0
+
+    let minPossible = Infinity
+
+    // Aseguramos que el rendimiento de la receta no sea 0 para no romper la división
+    const recipeYield = Number(recipe.yieldQuantity) || 1
+
+    for (const ingredient of recipe.ingredients) {
+      // 1. Validar que el objeto del ítem existe (evita crash si el loader falló)
+      if (!ingredient.ingredientItem) continue
+
+      const stockAvailable = Number(ingredient.ingredientItem.stock) || 0
+
+      // 2. Seguridad: Evitar división por cero en la conversión
+      const conversion =
+        Number(ingredient.ingredientItem.conversionToBaseQty) || 1
+
+      // 3. Calcular cantidad necesaria para 1 unidad final
+      // qtyRequired / rendimiento / conversion
+      const qtyNeededPerUnit =
+        ingredient.quantityRequired / recipeYield / conversion
+
+      // 4. Solo procesamos si la cantidad necesaria es válida y mayor a cero
+      if (qtyNeededPerUnit > 0) {
+        const possibleWithThisIng = Math.floor(
+          stockAvailable / qtyNeededPerUnit,
+        )
+
+        // El ingrediente con MENOR capacidad es el limitante (cuello de botella)
+        if (possibleWithThisIng < minPossible) {
+          minPossible = possibleWithThisIng
+        }
+      }
+    }
+
+    // Si nunca entró al loop o todos eran Infinity, devolvemos 0
+    return minPossible === Infinity ? 0 : minPossible
+  }
+
+  /**
+   * Calcula cuánto se puede producir de un ítem basado en sus insumos actuales.
+   * Devuelve el stock "virtual" adicional que podría fabricarse.
+   */
+  async calculateVirtualStock(userId: string, item: Item): Promise<number> {
+    // 1. Si el ítem no tiene el flag de producción activado, no calculamos nada.
+    if (!item.isProduced) return 0
+
+    // 2. Buscamos la receta vinculada
+    const recipe = await this.findByFinalProductId(item.id, userId)
+
+    // 3. Si no tiene receta cargada o no tiene ingredientes, el stock virtual es 0
+    if (!recipe || !recipe.ingredients || recipe.ingredients.length === 0)
+      return 0
+
+    let minPossible = Infinity
+
+    for (const ingredient of recipe.ingredients) {
+      // Aseguramos el casteo a número por la naturaleza del tipo numeric en Postgres
+      const stockAvailable = Number(ingredient.ingredientItem.stock)
+
+      // Cantidad de ingrediente necesaria para 1 unidad de producto final
+      // (Factorizando rendimiento de receta y conversión de unidad del ingrediente)
+      const qtyNeededPerUnit =
+        ingredient.quantityRequired /
+        recipe.yieldQuantity /
+        ingredient.ingredientItem.conversionToBaseQty
+
+      if (qtyNeededPerUnit > 0) {
+        const possibleWithThisIng = Math.floor(
+          stockAvailable / qtyNeededPerUnit,
+        )
+
+        // El ingrediente con MENOR capacidad es el limitante (cuello de botella)
+        if (possibleWithThisIng < minPossible) {
+          minPossible = possibleWithThisIng
+        }
+      }
+    }
+
+    return minPossible === Infinity ? 0 : minPossible
+  }
 }

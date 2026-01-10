@@ -171,32 +171,6 @@ type PaginatedItems {
   total: Int!
 }
 
-type IngredientConsumption {
-  name: String!
-  totalUsedForThisItem: Float!
-  unit: String!
-}
-
-type SimulatedItem {
-  itemId: String!
-  itemName: String!
-  requestedQuantity: Float!
-  ingredientsUsage: [IngredientConsumption!]!
-  hasInsufficientStock: Boolean!
-}
-
-type StockAlert {
-  ingredientName: String!
-  missingQuantity: Float!
-  unit: String!
-}
-
-type BatchSimulationResponse {
-  isViable: Boolean!
-  items: [SimulatedItem!]!
-  alerts: [StockAlert!]!
-}
-
 type PaginatedRecipes {
   recipes: [Recipe!]!
   total: Int!
@@ -247,6 +221,32 @@ type DashboardSummary {
   leastSellingProducts: [TopProduct!]!
 }
 
+type IngredientConsumption {
+  name: String!
+  totalUsedForThisItem: Float!
+  unit: String!
+}
+
+type SimulatedItem {
+  itemId: String!
+  itemName: String!
+  requestedQuantity: Float!
+  ingredientsUsage: [IngredientConsumption!]!
+  hasInsufficientStock: Boolean!
+}
+
+type StockAlert {
+  ingredientName: String!
+  missingQuantity: Float!
+  unit: String!
+}
+
+type BatchSimulationResponse {
+  isViable: Boolean!
+  items: [SimulatedItem!]!
+  alerts: [StockAlert!]!
+}
+
 type Query {
   """Obtiene la receta por el ID del producto final."""
   recipeByProduct(finalProductId: ID!): Recipe!
@@ -255,11 +255,13 @@ type Query {
   myRecipes(pagination: PaginationInput): PaginatedRecipes!
   items(filters: ItemsFilterInput, pagination: PaginationInput): PaginatedItems!
   lowStockReport(pagination: PaginationInput): PaginatedItems!
-  simulateProductionBatch(inputs: [ProduceItemInput!]!): BatchSimulationResponse!
   getItemByBarcode(barcode: String!): Item
   itemTransactionHistory(itemId: ID!): [TransactionHistoryItem!]!
   financialReport(startDate: DateTime!, endDate: DateTime!, groupBy: ReportGroupBy!): FinancialReportResponse!
   users: [User!]!
+
+  """Simula el consumo de ingredientes sin afectar el stock real."""
+  simulateProductionBatch(inputs: [ProduceItemInput!]!): BatchSimulationResponse!
   recentSales(userId: String!, pagination: PaginationInput): PaginatedSales!
   salesByDate(userId: String!, date: String!, pagination: PaginationInput): PaginatedSales!
   getHomeDashboard: DashboardSummary!
@@ -288,14 +290,14 @@ enum StockStatusFilter {
   AVAILABLE
 }
 
-input ProduceItemInput {
-  recipeId: ID!
-  quantityToProduce: Float!
-}
-
 enum ReportGroupBy {
   DAY
   MONTH
+}
+
+input ProduceItemInput {
+  recipeId: ID!
+  quantityToProduce: Float!
 }
 
 type Mutation {
@@ -310,11 +312,6 @@ type Mutation {
   """
   removeRecipe(id: ID!): Boolean!
   createItem(createItemInput: CreateItemInput!): Item!
-
-  """Ejecuta una producción, ajustando stock."""
-  produceItem(produceItemInput: ProduceItemInput!): Item!
-  adjustItemStock(adjustStockInput: AdjustStockInput!): Item!
-  produceItemsBatch(inputs: [ProduceItemInput!]!): [Item!]!
   updateItem(updateItemInput: UpdateItemInput!): Item!
   createItemsBulk(inputs: [CreateItemInput!]!): BulkItemResponse!
 
@@ -330,12 +327,21 @@ type Mutation {
 
   """Registra múltiples movimientos de stock de forma atómica."""
   registerInventoryMovements(registerTransactionInputs: [RegisterTransactionInput!]!): [InventoryTransaction!]!
+  adjustItemStock(adjustStockInput: AdjustStockInput!): Item!
 
   """Autenticación con el ID Token de Google/Firebase."""
   googleAuth(idToken: String!): AuthPayload!
 
   """Usa el Refresh Token para obtener un nuevo Access Token."""
   refreshAccessToken(refreshToken: String!): RefreshPayload!
+
+  """
+  Ejecuta una producción, ajustando stock de ingredientes y producto final.
+  """
+  produceItem(produceItemInput: ProduceItemInput!): Item!
+
+  """Produce múltiples recetas en una sola transacción atómica."""
+  produceItemsBatch(inputs: [ProduceItemInput!]!): [Item!]!
   createSale(createSaleInput: CreateSaleInput!): Sale!
   voidSale(saleId: String!): Sale!
 }
@@ -370,13 +376,6 @@ input CreateItemInput {
   salePrice: Float
   barcode: String
   sku: String
-}
-
-input AdjustStockInput {
-  itemId: ID!
-  quantity: Float!
-  type: TransactionType!
-  reason: String
 }
 
 input UpdateItemInput {
@@ -414,6 +413,13 @@ input RegisterTransactionInput {
   documentRef: String
   notes: String
   saleId: String
+}
+
+input AdjustStockInput {
+  itemId: ID!
+  quantity: Float!
+  type: TransactionType!
+  reason: String
 }
 
 input CreateSaleInput {

@@ -8,16 +8,11 @@ import { InventoryTransactionsModule } from 'src/inventory-transactions/inventor
 
 @Module({
   imports: [
-    // Registramos la entidad Item en el módulo TypeORM
     TypeOrmModule.forFeature([Item]),
-    // Usamos forwardRef aquí porque RecipesModule necesita ItemsModule
-    // y ahora ItemsModule también necesita RecipesModule.
-    forwardRef(() => RecipesModule), // <-- Solución al ciclo
+    forwardRef(() => RecipesModule),
     forwardRef(() => InventoryTransactionsModule),
-    // InventoryTransactionsModule,
   ],
   providers: [ItemsService, ItemsResolver],
-  // Exportamos el servicio si otros módulos (ej. Recetas, Auth) necesitan interactuar con Items
   exports: [ItemsService],
 })
 export class ItemsModule {}

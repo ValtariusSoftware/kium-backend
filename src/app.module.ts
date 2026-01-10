@@ -19,6 +19,7 @@ import { InventoryTransactionsModule } from './inventory-transactions/inventory-
 import { SalesModule } from './sales/sales.module'
 import { DashboardModule } from './dashboard/dashboard.module'
 import { RecipesService } from './recipes/recipes.service'
+import { ProductionModule } from './production/production.module'
 // 🚨 ELIMINAR ESTA LÍNEA -> import { JwtStrategy } from './auth/strategies/jwt.strategy'
 
 @Module({
@@ -45,6 +46,7 @@ import { RecipesService } from './recipes/recipes.service'
     AuthModule,
     ItemsModule,
     RecipesModule,
+    ProductionModule,
     InventoryTransactionsModule,
     SalesModule,
     DashboardModule,

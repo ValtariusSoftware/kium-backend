@@ -18,6 +18,7 @@ import { ReportGroupBy } from './enums/report-group-by.enum'
 import { ItemsService } from 'src/items/items.service'
 import { Item } from 'src/items/entities/item.entity'
 import { NotFoundException } from '@nestjs/common'
+import { AdjustStockInput } from './dto/adjust-stock.input'
 
 @Resolver(() => InventoryTransaction)
 export class InventoryTransactionsResolver {
@@ -95,6 +96,18 @@ export class InventoryTransactionsResolver {
     return this.inventoryTransactionsService.registerMovementsBatch(
       user.id,
       inputs,
+    )
+  }
+
+  @Mutation(() => Item, { name: 'adjustItemStock' })
+  async adjustStock(
+    @Args('adjustStockInput') adjustStockInput: AdjustStockInput,
+    @CurrentUser() user: User,
+  ): Promise<Item> {
+    // CAMBIO: Ahora llama al servicio de inventario, que es donde moviste la lógica
+    return this.inventoryTransactionsService.adjustStock(
+      user.id,
+      adjustStockInput,
     )
   }
 }
