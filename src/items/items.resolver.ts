@@ -4,24 +4,21 @@ import {
   Mutation,
   Args,
   ResolveField,
-  Float,
   Parent,
   ID,
   Context,
+  Float,
 } from '@nestjs/graphql'
 import { ItemsService } from './items.service'
 import { Item } from './entities/item.entity'
 import { BulkItemResponse, CreateItemInput } from './dto/create-item.dto'
 import { User } from '../users/entities/user.entity'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
-import { ProduceItemInput } from './dto/produce-item.dto'
-import { AdjustStockInput } from './dto/adjust-stock.input'
 import { ItemsFilterInput } from './dto/items-filter.input'
 import { BulkUpdateItemInput, UpdateItemInput } from './dto/update-item.input'
 import { PaginatedItems } from './types/paginated-items.type'
 import { PaginationInput } from 'src/common/dto/pagination.input'
 import { RecipesLoader } from 'src/recipes/recipes.loader'
-import { BatchSimulationResponse } from './dto/simulate-production.output'
 import { Recipe } from 'src/recipes/entities/recipe.entity'
 import { RecipesService } from 'src/recipes/recipes.service'
 
@@ -50,24 +47,6 @@ export class ItemsResolver {
     return this.itemsService.getItems(user.id, filters, pagination)
   }
 
-  @Mutation(() => Item, {
-    description: 'Ejecuta una producción, ajustando stock.',
-  })
-  async produceItem(
-    @Args('produceItemInput') produceItemInput: ProduceItemInput,
-    @CurrentUser() user: User,
-  ): Promise<Item> {
-    return this.itemsService.produce(user.id, produceItemInput)
-  }
-
-  @Mutation(() => Item, { name: 'adjustItemStock' })
-  async adjustStock(
-    @Args('adjustStockInput') adjustStockInput: AdjustStockInput,
-    @CurrentUser() user: User,
-  ): Promise<Item> {
-    return this.itemsService.adjustStock(user.id, adjustStockInput)
-  }
-
   @Query(() => PaginatedItems, { name: 'lowStockReport' })
   async getLowStockReport(
     @CurrentUser() user: User,
@@ -86,56 +65,6 @@ export class ItemsResolver {
 
     // El loader ya busca por finalProductId internamente
     return recipesLoader.load(item.id)
-  }
-
-  @ResolveField(() => Float)
-  async canProduceQuantity(
-    @Parent() item: Item,
-    @Context('recipesLoader') recipesLoader: RecipesLoader, // Usa el tipo real aquí
-  ): Promise<number> {
-    if (!item.isProduced) return 0
-
-    // Ahora recipe será Recipe | null
-    const recipe = await recipesLoader.load(item.id)
-    if (!recipe) return 0
-
-    return this.itemsService.runVirtualStockMath(recipe)
-  }
-
-  @ResolveField(() => Float)
-  async totalAvailableStock(
-    @Parent() item: Item,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    @Context('recipesLoader') recipesLoader: any,
-  ): Promise<number> {
-    let virtual = 0
-
-    if (item.isProduced) {
-      const recipe = await recipesLoader.load(item.id)
-      if (recipe) {
-        virtual = this.itemsService.runVirtualStockMath(recipe)
-      }
-    }
-
-    return Number(item.stock) + virtual
-  }
-
-  @Mutation(() => [Item], { name: 'produceItemsBatch' })
-  async produceItemsBatch(
-    @Args({ name: 'inputs', type: () => [ProduceItemInput] })
-    inputs: ProduceItemInput[],
-    @CurrentUser() user: User,
-  ): Promise<Item[]> {
-    return this.itemsService.produceItemsBatch(user.id, inputs)
-  }
-
-  @Query(() => BatchSimulationResponse, { name: 'simulateProductionBatch' })
-  async simulateProductionBatch(
-    @Args({ name: 'inputs', type: () => [ProduceItemInput] })
-    inputs: ProduceItemInput[],
-    @CurrentUser() user: User,
-  ): Promise<BatchSimulationResponse> {
-    return this.itemsService.simulateBatch(user.id, inputs)
   }
 
   // Buscar un producto por código de barras (Rápido para el escáner)
@@ -193,5 +122,33 @@ export class ItemsResolver {
     @CurrentUser() user: User,
   ): Promise<Item[]> {
     return this.itemsService.updateBulk(user.id, user.accessLevel, inputs)
+  }
+
+  @ResolveField(() => Float)
+  async canProduceQuantity(
+    @Parent() item: Item,
+    @Context('recipesLoader') recipesLoader: RecipesLoader,
+  ): Promise<number> {
+    if (!item.isProduced) return 0
+    const recipe = await recipesLoader.load(item.id)
+    if (!recipe) return 0
+
+    // Usamos el servicio de recetas para el cálculo matemático
+    return this.recipesService.runVirtualStockMath(recipe)
+  }
+
+  @ResolveField(() => Float)
+  async totalAvailableStock(
+    @Parent() item: Item,
+    @Context('recipesLoader') recipesLoader: RecipesLoader,
+  ): Promise<number> {
+    let virtual = 0
+    if (item.isProduced) {
+      const recipe = await recipesLoader.load(item.id)
+      if (recipe) {
+        virtual = this.recipesService.runVirtualStockMath(recipe)
+      }
+    }
+    return Number(item.stock) + virtual
   }
 }

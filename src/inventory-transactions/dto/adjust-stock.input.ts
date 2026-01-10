@@ -1,6 +1,6 @@
 import { InputType, Field, ID, Float } from '@nestjs/graphql'
 import { IsUUID, IsNumber, IsString, IsOptional, IsEnum } from 'class-validator'
-import { TransactionType } from 'src/inventory-transactions/enums/transaction-type.enum'
+import { TransactionType } from '../enums/transaction-type.enum'
 
 @InputType()
 export class AdjustStockInput {
