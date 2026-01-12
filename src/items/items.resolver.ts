@@ -47,6 +47,14 @@ export class ItemsResolver {
     return this.itemsService.getItems(user.id, filters, pagination)
   }
 
+  @Query(() => Item, { name: 'item', nullable: true })
+  async findOne(
+    @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Item | null> {
+    return this.itemsService.findOne(id, user.id)
+  }
+
   @Query(() => PaginatedItems, { name: 'lowStockReport' })
   async getLowStockReport(
     @CurrentUser() user: User,
@@ -58,13 +66,18 @@ export class ItemsResolver {
   @ResolveField(() => Recipe, { nullable: true })
   async recipe(
     @Parent() item: Item,
-    // 2. Usamos el Loader para ser ultra eficientes en listas largas
     @Context('recipesLoader') recipesLoader: RecipesLoader,
+    @CurrentUser() user: User, // Agregamos el usuario
   ): Promise<Recipe | null> {
     if (!item.isProduced) return null
 
-    // El loader ya busca por finalProductId internamente
-    return recipesLoader.load(item.id)
+    // Si el loader existe, lo usamos (Eficiencia)
+    if (recipesLoader) {
+      return recipesLoader.load(item.id)
+    }
+
+    // Plan B: Si el loader es null, vamos directo al service (Seguridad)
+    return this.recipesService.findByFinalProductId(item.id, user.id)
   }
 
   // Buscar un producto por código de barras (Rápido para el escáner)
@@ -128,12 +141,21 @@ export class ItemsResolver {
   async canProduceQuantity(
     @Parent() item: Item,
     @Context('recipesLoader') recipesLoader: RecipesLoader,
+    @CurrentUser() user: User, // <-- Necesitamos el usuario para el plan B
   ): Promise<number> {
     if (!item.isProduced) return 0
-    const recipe = await recipesLoader.load(item.id)
+
+    let recipe: Recipe | null = null
+
+    if (recipesLoader) {
+      recipe = await recipesLoader.load(item.id)
+    } else {
+      // Plan B: Usamos el nombre correcto del método y pasamos el userId
+      recipe = await this.recipesService.findByFinalProductId(item.id, user.id)
+    }
+
     if (!recipe) return 0
 
-    // Usamos el servicio de recetas para el cálculo matemático
     return this.recipesService.runVirtualStockMath(recipe)
   }
 
@@ -141,14 +163,27 @@ export class ItemsResolver {
   async totalAvailableStock(
     @Parent() item: Item,
     @Context('recipesLoader') recipesLoader: RecipesLoader,
+    @CurrentUser() user: User, // <-- Lo mismo aquí
   ): Promise<number> {
     let virtual = 0
+
     if (item.isProduced) {
-      const recipe = await recipesLoader.load(item.id)
+      let recipe: Recipe | null = null
+
+      if (recipesLoader) {
+        recipe = await recipesLoader.load(item.id)
+      } else {
+        recipe = await this.recipesService.findByFinalProductId(
+          item.id,
+          user.id,
+        )
+      }
+
       if (recipe) {
         virtual = this.recipesService.runVirtualStockMath(recipe)
       }
     }
+
     return Number(item.stock) + virtual
   }
 }
