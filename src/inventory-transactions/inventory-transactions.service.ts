@@ -19,6 +19,7 @@ import { ItemsService } from 'src/items/items.service'
 import { GraphQLError } from 'graphql'
 import { AdjustStockInput } from './dto/adjust-stock.input'
 import { RecipesService } from 'src/recipes/recipes.service'
+import { PaginationInput } from 'src/common/dto/pagination.input'
 
 @Injectable()
 export class InventoryTransactionsService {
@@ -169,11 +170,18 @@ export class InventoryTransactionsService {
   async findByItem(
     itemId: string,
     userId: string,
-  ): Promise<InventoryTransaction[]> {
-    return this.transactionRepository.find({
-      where: { itemId, userId },
-      order: { createdAt: 'DESC' }, // El más reciente primero
-    })
+    pagination: PaginationInput, // <-- Nuevo argumento
+  ): Promise<{ transactions: InventoryTransaction[]; total: number }> {
+    const [transactions, total] = await this.transactionRepository.findAndCount(
+      {
+        where: { itemId, userId },
+        order: { createdAt: 'DESC' },
+        take: pagination.limit, // Cuántos traer
+        skip: pagination.offset, // Cuántos saltar
+      },
+    )
+
+    return { transactions, total }
   }
 
   async getFinancialReport(

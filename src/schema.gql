@@ -176,17 +176,6 @@ type PaginatedRecipes {
   total: Int!
 }
 
-type TransactionHistoryItem {
-  id: ID!
-  type: TransactionType!
-  quantity: Float!
-  unitCostSnapshot: Float!
-  salePriceSnapshot: Float
-  documentRef: String
-  notes: String
-  createdAt: DateTime!
-}
-
 type FinancialDataPoint {
   label: String!
   revenue: Float!
@@ -198,6 +187,22 @@ type FinancialDataPoint {
 type FinancialReportResponse {
   data: [FinancialDataPoint!]!
   totalNetProfit: Float!
+}
+
+type TransactionHistoryItem {
+  id: ID!
+  type: TransactionType!
+  quantity: Float!
+  unitCostSnapshot: Float!
+  salePriceSnapshot: Float
+  documentRef: String
+  notes: String
+  createdAt: DateTime!
+}
+
+type PaginatedTransactions {
+  transactions: [TransactionHistoryItem!]!
+  total: Int!
 }
 
 type PaginatedSales {
@@ -219,6 +224,16 @@ type DashboardSummary {
   salesTrend: Int!
   monthlyLosses: Float!
   leastSellingProducts: [TopProduct!]!
+}
+
+type PaginatedLowStock {
+  items: [Item!]!
+  total: Int!
+}
+
+type PaginatedTopProducts {
+  items: [TopProduct!]!
+  total: Int!
 }
 
 type IngredientConsumption {
@@ -257,19 +272,19 @@ type Query {
   item(id: ID!): Item
   lowStockReport(pagination: PaginationInput): PaginatedItems!
   getItemByBarcode(barcode: String!): Item
-  itemTransactionHistory(itemId: ID!): [TransactionHistoryItem!]!
+  itemTransactionHistory(itemId: ID!, pagination: PaginationInput): PaginatedTransactions!
   financialReport(startDate: DateTime!, endDate: DateTime!, groupBy: ReportGroupBy!): FinancialReportResponse!
   users: [User!]!
 
   """Simula el consumo de ingredientes sin afectar el stock real."""
   simulateProductionBatch(inputs: [ProduceItemInput!]!): BatchSimulationResponse!
-  recentSales(userId: String!, pagination: PaginationInput): PaginatedSales!
-  salesByDate(userId: String!, date: String!, pagination: PaginationInput): PaginatedSales!
+  recentSales(pagination: PaginationInput): PaginatedSales!
+  salesByDate(date: String!, pagination: PaginationInput): PaginatedSales!
   getHomeDashboard: DashboardSummary!
-  getTopSellingDetailed(pagination: PaginationInput): [TopProduct!]!
-  getLeastSellingDetailed(pagination: PaginationInput): [TopProduct!]!
-  getLowStockDetailed(pagination: PaginationInput): [Item!]!
-  getMonthlySalesDetailed(pagination: PaginationInput): [Sale!]!
+  getTopSellingDetailed(pagination: PaginationInput): PaginatedTopProducts!
+  getLeastSellingDetailed(pagination: PaginationInput): PaginatedTopProducts!
+  getLowStockDetailed(pagination: PaginationInput): PaginatedLowStock!
+  getMonthlySalesDetailed(pagination: PaginationInput): PaginatedSales!
 }
 
 input PaginationInput {

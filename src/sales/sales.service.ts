@@ -8,6 +8,7 @@ import { InventoryTransactionsService } from 'src/inventory-transactions/invento
 import { Injectable, NotFoundException } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { PaginationInput } from 'src/common/dto/pagination.input'
+import { PaginatedSales } from './dto/paginated-sales.output'
 
 @Injectable()
 export class SalesService {
@@ -165,11 +166,13 @@ export class SalesService {
    */
   async getSalesByDate(
     userId: string,
-    date: string, // Espera "YYYY-MM-DD"
+    date: string,
     pagination: PaginationInput,
-  ): Promise<{ sales: Sale[]; total: number }> {
-    const startOfDay = new Date(`${date}T00:00:00.000Z`)
-    const endOfDay = new Date(`${date}T23:59:59.999Z`)
+  ): Promise<PaginatedSales> {
+    // Usamos split para evitar que la zona horaria mueva la fecha
+    const [year, month, day] = date.split('-').map(Number)
+    const startOfDay = new Date(Date.UTC(year, month - 1, day, 0, 0, 0, 0))
+    const endOfDay = new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999))
 
     const [sales, total] = await this.salesRepository.findAndCount({
       where: {
