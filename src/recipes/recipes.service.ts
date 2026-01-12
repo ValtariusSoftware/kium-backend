@@ -6,7 +6,7 @@ import {
   Inject,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, In, Repository } from 'typeorm'
+import { DataSource, In, QueryRunner, Repository } from 'typeorm'
 import { Recipe } from './entities/recipe.entity'
 import { CreateRecipeInput } from './dto/create-recipe.dto'
 import { ItemsService } from '../items/items.service'
@@ -352,10 +352,15 @@ export class RecipesService {
     return count > 0
   }
 
-  async findBatchByFinalProductIds(ids: string[]): Promise<Recipe[]> {
+  // En RecipesService
+  async findBatchByFinalProductIds(
+    ids: string[],
+    userId: string,
+  ): Promise<Recipe[]> {
     return this.recipesRepository.find({
       where: {
         finalProductId: In(ids),
+        userId: userId, // <--- SEGURIDAD: Solo traer recetas del usuario actual
       },
       relations: ['ingredients', 'ingredients.ingredientItem'],
     })
@@ -465,5 +470,46 @@ export class RecipesService {
     }
 
     return minPossible === Infinity ? 0 : minPossible
+  }
+
+  async syncRecipeCostsByIngredient(
+    userId: string,
+    ingredientId: string,
+    externalRunner: QueryRunner,
+  ): Promise<void> {
+    // 1. Buscamos todas las recetas que usan este ingrediente
+    // Importante: Cargamos 'ingredients' y sus ítems para tener los costos actuales de los OTROS componentes
+    const recipesUsingItem = await externalRunner.manager.find(Recipe, {
+      where: { ingredients: { ingredientItemId: ingredientId }, userId },
+      relations: ['ingredients', 'ingredients.ingredientItem'],
+    })
+
+    for (const recipe of recipesUsingItem) {
+      let totalRecipeCost = 0
+
+      for (const ing of recipe.ingredients) {
+        // Usamos el costo del ítem (que ya debe estar actualizado en la DB en este punto)
+        // Ojo: Si el ing.ingredientItem es el que acaba de cambiar, el runner ya tiene el dato fresco
+        const cost = Number(ing.ingredientItem.costPrice) || 0
+        totalRecipeCost += cost * ing.quantityRequired
+      }
+
+      const newUnitCost = Number(
+        (totalRecipeCost / recipe.yieldQuantity).toFixed(2),
+      )
+
+      // 2. Actualizamos el costo del producto final de la receta
+      await externalRunner.manager.update(Item, recipe.finalProductId, {
+        costPrice: newUnitCost,
+      })
+
+      // 3. RECURSIÓN: Si este producto final es a su vez ingrediente de OTRA receta,
+      // debemos disparar el mismo proceso para esa otra receta (Efecto dominó)
+      await this.syncRecipeCostsByIngredient(
+        userId,
+        recipe.finalProductId,
+        externalRunner,
+      )
+    }
   }
 }

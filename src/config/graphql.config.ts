@@ -22,9 +22,16 @@ export const graphqlConfig = (
       includeCookies: true,
     }),
   ],
-  context: ({ req, res }: { req: Request; res: Response }) => ({
-    req,
-    res,
-    recipesLoader: createRecipesLoader(recipesService),
-  }),
+  context: ({ req, res }: { req: Request; res: Response }) => {
+    const userId = req['user']?.id
+
+    return {
+      req,
+      res,
+      // Solo creamos el loader si hay un usuario autenticado
+      recipesLoader: userId
+        ? createRecipesLoader(recipesService, userId)
+        : null,
+    }
+  },
 })

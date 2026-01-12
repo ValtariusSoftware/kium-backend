@@ -18,6 +18,7 @@ import { ReportGroupBy } from './enums/report-group-by.enum'
 import { ItemsService } from 'src/items/items.service'
 import { GraphQLError } from 'graphql'
 import { AdjustStockInput } from './dto/adjust-stock.input'
+import { RecipesService } from 'src/recipes/recipes.service'
 
 @Injectable()
 export class InventoryTransactionsService {
@@ -27,6 +28,8 @@ export class InventoryTransactionsService {
     private readonly dataSource: DataSource, // Para manejar la transacción atómica
     @Inject(forwardRef(() => ItemsService)) // 👈 Importante para evitar dependencia circular
     private readonly itemsService: ItemsService,
+    @Inject(forwardRef(() => RecipesService))
+    private readonly recipesService: RecipesService,
   ) {}
 
   /**
@@ -115,17 +118,35 @@ export class InventoryTransactionsService {
 
       const savedTransaction = await runner.manager.save(newTransaction)
 
-      // 3. Actualizar Ficha Maestra (Solo para compras o inventario inicial)
+      // --- 3. Actualizar Ficha Maestra (Solo para compras o inventario inicial) ---
       if (
         (input.type === TransactionType.PURCHASE ||
           input.type === TransactionType.INITIAL_INVENTORY) &&
         unitCostSnapshot > 0
       ) {
-        await runner.manager.update(
-          Item,
-          { id: input.itemId },
-          { costPrice: unitCostSnapshot },
-        )
+        // 🛡️ VALIDACIÓN: No permitimos que una compra manual pise el costo de algo que se fabrica por receta
+        if (!item.isProduced) {
+          await runner.manager.update(
+            Item,
+            { id: input.itemId },
+            { costPrice: unitCostSnapshot },
+          )
+
+          // 🔥 Sincronizar recetas si este ítem es ingrediente de otras cosas
+          if (item.isIngredient) {
+            await this.recipesService.syncRecipeCostsByIngredient(
+              userId,
+              item.id,
+              runner,
+            )
+          }
+        } else {
+          // Si es un producto producido, el stock aumenta pero el costo se ignora
+          // Podrías loguear esto o simplemente dejar que el stock fluya sin tocar el costPrice maestro.
+          console.log(
+            `[Inventory] Se omitió actualización de costo para "${item.name}" porque es un producto producido.`,
+          )
+        }
       }
 
       // 4. Actualizar stock físico
