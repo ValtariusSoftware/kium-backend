@@ -12,13 +12,14 @@ import { InventoryTransaction } from './entities/inventory-transaction.entity'
 import { RegisterTransactionInput } from './dto/register-transaction.input'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { User } from 'src/users/entities/user.entity'
-import { TransactionHistoryItem } from './dto/transaction-history.output'
 import { FinancialReportResponse } from './dto/financial-report.output'
 import { ReportGroupBy } from './enums/report-group-by.enum'
 import { ItemsService } from 'src/items/items.service'
 import { Item } from 'src/items/entities/item.entity'
 import { NotFoundException } from '@nestjs/common'
 import { AdjustStockInput } from './dto/adjust-stock.input'
+import { PaginationInput } from 'src/common/dto/pagination.input'
+import { PaginatedTransactions } from './dto/paginated-transactions.output'
 
 @Resolver(() => InventoryTransaction)
 export class InventoryTransactionsResolver {
@@ -44,12 +45,19 @@ export class InventoryTransactionsResolver {
     )
   }
 
-  @Query(() => [TransactionHistoryItem], { name: 'itemTransactionHistory' })
+  @Query(() => PaginatedTransactions, { name: 'itemTransactionHistory' }) // <-- Cambia el tipo de retorno
   async getHistory(
     @Args('itemId', { type: () => ID }) itemId: string,
-    @CurrentUser() user: User, // Tu decorador de usuario
-  ): Promise<InventoryTransaction[]> {
-    return this.inventoryTransactionsService.findByItem(itemId, user.id)
+    @CurrentUser() user: User,
+    @Args('pagination', { nullable: true }) pagination?: PaginationInput, // <-- Nuevo Args
+  ): Promise<PaginatedTransactions> {
+    // Usamos los valores por defecto si no vienen en la consulta
+    const nav = pagination || new PaginationInput()
+
+    const { transactions, total } =
+      await this.inventoryTransactionsService.findByItem(itemId, user.id, nav)
+
+    return { transactions, total }
   }
 
   @Query(() => FinancialReportResponse, { name: 'financialReport' })

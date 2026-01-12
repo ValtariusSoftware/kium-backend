@@ -32,21 +32,20 @@ export class SalesResolver {
 
   @Query(() => PaginatedSales, { name: 'recentSales' })
   async getRecentSales(
-    @Args('userId') userId: string,
+    @CurrentUser() user: User, // 👈 Cambiado: Usamos el usuario autenticado
     @Args('pagination', { nullable: true }) pagination?: PaginationInput,
   ): Promise<PaginatedSales> {
-    // Si no mandan paginación, usamos los defaults del DTO
     const p = pagination || new PaginationInput()
-    return this.salesService.getRecentSales(userId, p)
+    return this.salesService.getRecentSales(user.id, p)
   }
 
   @Query(() => PaginatedSales, { name: 'salesByDate' })
   async getSalesByDate(
-    @Args('userId') userId: string,
-    @Args('date') date: string, // Formato "YYYY-MM-DD"
+    @CurrentUser() user: User, // 👈 Cambiado: Seguridad ante todo
+    @Args('date') date: string,
     @Args('pagination', { nullable: true }) pagination?: PaginationInput,
   ): Promise<PaginatedSales> {
     const p = pagination || new PaginationInput()
-    return this.salesService.getSalesByDate(userId, date, p)
+    return this.salesService.getSalesByDate(user.id, date, p)
   }
 }
