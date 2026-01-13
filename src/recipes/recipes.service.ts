@@ -239,6 +239,16 @@ export class RecipesService {
         costPrice: newUnitCost,
       })
 
+      // --- 🚀 ESTA ES LA LÍNEA A AGREGAR ---
+      // Como el costo de este producto cambió (porque editamos su receta),
+      // avisamos a todas las recetas que lo usan como ingrediente para que se actualicen.
+      await this.syncRecipeCostsByIngredient(
+        userId,
+        finalProductId,
+        queryRunner,
+      )
+      // -------------------------------------
+
       await queryRunner.commitTransaction()
 
       const result = await this.findOne(id, userId)
