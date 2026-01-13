@@ -4,10 +4,13 @@ import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin
 import { ConfigService } from '@nestjs/config'
 import { RecipesService } from '../recipes/recipes.service' // <--- Importante
 import { createRecipesLoader } from '../recipes/recipes.loader' // <--- El archivo que vamos a crear
+import { createItemsLoader } from 'src/items/items.loader'
+import { ItemsService } from 'src/items/items.service'
 
 export const graphqlConfig = (
   configService: ConfigService,
   recipesService: RecipesService,
+  itemsService: ItemsService,
 ): ApolloDriverConfig => ({
   autoSchemaFile: join(
     process.cwd(),
@@ -32,6 +35,7 @@ export const graphqlConfig = (
       recipesLoader: userId
         ? createRecipesLoader(recipesService, userId)
         : null,
+      itemsLoader: userId ? createItemsLoader(itemsService, userId) : null,
     }
   },
 })

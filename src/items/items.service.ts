@@ -616,4 +616,18 @@ export class ItemsService {
       await queryRunner.release()
     }
   }
+
+  /**
+   * Busca múltiples ítems por sus IDs en una sola consulta.
+   * Utilizado principalmente por el ItemsLoader (DataLoader).
+   */
+  async findBatchByIds(ids: string[], userId: string): Promise<Item[]> {
+    // Usamos el operador In de TypeORM para buscar todos los IDs de una vez
+    return await this.itemsRepository.find({
+      where: {
+        id: In(ids),
+        userId: userId,
+      },
+    })
+  }
 }

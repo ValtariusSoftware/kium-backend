@@ -6,6 +6,7 @@ import {
   ID,
   ResolveField,
   Parent,
+  Context,
 } from '@nestjs/graphql'
 import { InventoryTransactionsService } from './inventory-transactions.service'
 import { InventoryTransaction } from './entities/inventory-transaction.entity'
@@ -20,6 +21,7 @@ import { NotFoundException } from '@nestjs/common'
 import { AdjustStockInput } from './dto/adjust-stock.input'
 import { PaginationInput } from 'src/common/dto/pagination.input'
 import { PaginatedTransactions } from './dto/paginated-transactions.output'
+import { ItemsLoader } from 'src/items/items.loader'
 
 @Resolver(() => InventoryTransaction)
 export class InventoryTransactionsResolver {
@@ -78,12 +80,17 @@ export class InventoryTransactionsResolver {
   @ResolveField(() => Item, { name: 'item' })
   async getItem(
     @Parent() transaction: InventoryTransaction,
-    @CurrentUser() user: User,
+    @Context('itemsLoader') itemsLoader: ItemsLoader,
   ): Promise<Item> {
-    const item = await this.itemsService.findOne(transaction.itemId, user.id)
+    if (!itemsLoader) {
+      throw new Error('ItemsLoader no disponible')
+    }
+
+    const item = await itemsLoader.load(transaction.itemId)
+
     if (!item) {
       throw new NotFoundException(
-        'El ítem asociado a esta transacción ya no existe.',
+        `El ítem con ID ${transaction.itemId} asociado a esta transacción no existe.`,
       )
     }
     return item

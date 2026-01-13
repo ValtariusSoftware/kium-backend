@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   forwardRef,
   Inject,
   Injectable,
@@ -120,20 +121,21 @@ export class InventoryTransactionsService {
       const savedTransaction = await runner.manager.save(newTransaction)
 
       // --- 3. Actualizar Ficha Maestra (Solo para compras o inventario inicial) ---
-      if (
-        (input.type === TransactionType.PURCHASE ||
-          input.type === TransactionType.INITIAL_INVENTORY) &&
-        unitCostSnapshot > 0
-      ) {
-        // 🛡️ VALIDACIÓN: No permitimos que una compra manual pise el costo de algo que se fabrica por receta
+      const isPurchase =
+        input.type === TransactionType.PURCHASE ||
+        input.type === TransactionType.INITIAL_INVENTORY
+      const priceWasProvided =
+        input.unitCostSnapshot !== undefined && input.unitCostSnapshot !== null
+
+      if (isPurchase && priceWasProvided) {
         if (!item.isProduced) {
+          // CASO A: Es un insumo o producto de reventa -> ACTUALIZAMOS TODO
           await runner.manager.update(
             Item,
             { id: input.itemId },
             { costPrice: unitCostSnapshot },
           )
 
-          // 🔥 Sincronizar recetas si este ítem es ingrediente de otras cosas
           if (item.isIngredient) {
             await this.recipesService.syncRecipeCostsByIngredient(
               userId,
@@ -142,10 +144,10 @@ export class InventoryTransactionsService {
             )
           }
         } else {
-          // Si es un producto producido, el stock aumenta pero el costo se ignora
-          // Podrías loguear esto o simplemente dejar que el stock fluya sin tocar el costPrice maestro.
+          // CASO B: Es producido -> El stock sube, pero el costo maestro NO se toca
+          // porque el costo maestro de un producido depende de su receta, no de una carga manual.
           console.log(
-            `[Inventory] Se omitió actualización de costo para "${item.name}" porque es un producto producido.`,
+            `[Inventory] Se omitió actualización de costo maestro para "${item.name}" por ser producto producido.`,
           )
         }
       }
@@ -260,6 +262,12 @@ export class InventoryTransactionsService {
     userId: string,
     inputs: RegisterTransactionInput[],
   ): Promise<InventoryTransaction[]> {
+    // 🛡️ VALIDACIÓN DE NEGOCIO: Antes de abrir la transacción
+    if (inputs.length > 50) {
+      throw new BadRequestException(
+        `El lote es demasiado grande. Máximo 50 movimientos, recibidos: ${inputs.length}`,
+      )
+    }
     const runner = this.dataSource.createQueryRunner()
     await runner.connect()
     await runner.startTransaction()

@@ -68,6 +68,7 @@ export class ProductionService {
 
         const dbItem = await queryRunner.manager.findOne(Item, {
           where: { id: ingredient.ingredientItemId },
+          lock: { mode: 'pessimistic_write' },
         })
 
         const currentStock = Number(dbItem?.stock || 0)
@@ -183,77 +184,6 @@ export class ProductionService {
       await runner.release()
     }
   }
-
-  // Este método solo hace la cuenta, NO va a la base de datos.
-  // Es súper rápido porque recibe la receta con todo cargado.
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  // runVirtualStockMath(recipe: any): number {
-  //   let minPossible = Infinity
-
-  //   for (const ingredient of recipe.ingredients) {
-  //     const stockAvailable = Number(ingredient.ingredientItem.stock)
-  //     const qtyNeededPerUnit =
-  //       ingredient.quantityRequired /
-  //       recipe.yieldQuantity /
-  //       ingredient.ingredientItem.conversionToBaseQty
-
-  //     if (qtyNeededPerUnit > 0) {
-  //       const possibleWithThisIng = Math.floor(
-  //         stockAvailable / qtyNeededPerUnit,
-  //       )
-  //       if (possibleWithThisIng < minPossible) {
-  //         minPossible = possibleWithThisIng
-  //       }
-  //     }
-  //   }
-  //   return minPossible === Infinity ? 0 : minPossible
-  // }
-
-  /**
-   * Calcula cuánto se puede producir de un ítem basado en sus insumos actuales.
-   * Devuelve el stock "virtual" adicional que podría fabricarse.
-   */
-  // async calculateVirtualStock(userId: string, item: Item): Promise<number> {
-  //   // 1. Si el ítem no tiene el flag de producción activado, no calculamos nada.
-  //   if (!item.isProduced) return 0
-
-  //   // 2. Buscamos la receta vinculada
-  //   const recipe = await this.recipesService.findByFinalProductId(
-  //     item.id,
-  //     userId,
-  //   )
-
-  //   // 3. Si no tiene receta cargada o no tiene ingredientes, el stock virtual es 0
-  //   if (!recipe || !recipe.ingredients || recipe.ingredients.length === 0)
-  //     return 0
-
-  //   let minPossible = Infinity
-
-  //   for (const ingredient of recipe.ingredients) {
-  //     // Aseguramos el casteo a número por la naturaleza del tipo numeric en Postgres
-  //     const stockAvailable = Number(ingredient.ingredientItem.stock)
-
-  //     // Cantidad de ingrediente necesaria para 1 unidad de producto final
-  //     // (Factorizando rendimiento de receta y conversión de unidad del ingrediente)
-  //     const qtyNeededPerUnit =
-  //       ingredient.quantityRequired /
-  //       recipe.yieldQuantity /
-  //       ingredient.ingredientItem.conversionToBaseQty
-
-  //     if (qtyNeededPerUnit > 0) {
-  //       const possibleWithThisIng = Math.floor(
-  //         stockAvailable / qtyNeededPerUnit,
-  //       )
-
-  //       // El ingrediente con MENOR capacidad es el limitante (cuello de botella)
-  //       if (possibleWithThisIng < minPossible) {
-  //         minPossible = possibleWithThisIng
-  //       }
-  //     }
-  //   }
-
-  //   return minPossible === Infinity ? 0 : minPossible
-  // }
 
   /**
    * Simula el impacto en stock de un lote de producción sin persistir cambios.
