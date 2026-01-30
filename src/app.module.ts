@@ -21,6 +21,7 @@ import { DashboardModule } from './dashboard/dashboard.module'
 import { RecipesService } from './recipes/recipes.service'
 import { ProductionModule } from './production/production.module'
 import { ItemsService } from './items/items.service'
+import { AppController } from './app.controller'
 // 🚨 ELIMINAR ESTA LÍNEA -> import { JwtStrategy } from './auth/strategies/jwt.strategy'
 
 @Module({
@@ -53,6 +54,7 @@ import { ItemsService } from './items/items.service'
     SalesModule,
     DashboardModule,
   ],
+  controllers: [AppController],
   providers: [
     {
       provide: APP_GUARD,

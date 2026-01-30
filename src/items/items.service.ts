@@ -4,6 +4,7 @@ import {
   NotFoundException,
   Inject,
   forwardRef,
+  ConflictException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, DataSource, In } from 'typeorm'
@@ -21,6 +22,7 @@ import { ItemsFilterInput, StockStatusFilter } from './dto/items-filter.input'
 import { BulkUpdateItemInput, UpdateItemInput } from './dto/update-item.input'
 import { PaginatedItems } from './types/paginated-items.type'
 import { PaginationInput } from 'src/common/dto/pagination.input'
+import { ItemErrorCode } from './enums/item-error-code.enum'
 
 interface DatabaseError extends Error {
   code?: string
@@ -82,23 +84,17 @@ export class ItemsService {
    * Captura errores específicos de la base de datos (Postgres)
    * y los transforma en excepciones amigables para el usuario.
    */
-  private handleDuplicateError(err: unknown): void {
-    // Primero casteamos a nuestro tipo para poder leer las propiedades
-    const dbError = err as DatabaseError
 
-    // Código 23505: Violación de restricción única (Unique Violation)
-    if (dbError.code === '23505') {
-      const detail = dbError.detail || ''
-      let message = 'Ya existe un ítem con esos datos en tu catálogo.'
+  private handleDuplicateError(err: unknown) {
+    const error = err as DatabaseError
+    if (error.code === '23505') {
+      const detail = error.detail?.toLowerCase() || ''
+      if (detail.includes('sku'))
+        throw new ConflictException(ItemErrorCode.DUPLICATE_SKU)
+      if (detail.includes('barcode'))
+        throw new ConflictException(ItemErrorCode.DUPLICATE_BARCODE)
 
-      if (detail.includes('sku')) {
-        message =
-          'El SKU ingresado ya está registrado. Por favor, usa uno diferente.'
-      } else if (detail.includes('barcode')) {
-        message = 'Ese código de barras ya pertenece a otro producto.'
-      }
-
-      throw new ForbiddenException(message)
+      throw new ConflictException(ItemErrorCode.DUPLICATE_ENTRY)
     }
   }
 
@@ -324,7 +320,7 @@ export class ItemsService {
 
     const item = await this.findOne(id, userId)
     if (!item) {
-      throw new NotFoundException(`Ítem con ID ${id} no encontrado.`)
+      throw new NotFoundException(ItemErrorCode.ITEM_NOT_FOUND)
     }
 
     // 1. Solo necesitamos recalcular roles si cambia el salePrice
@@ -390,7 +386,7 @@ export class ItemsService {
         errorReport.push({
           row: i + 1,
           name: input.name,
-          error: 'Límite de capacidad del plan alcanzado.',
+          error: ItemErrorCode.LIMIT_REACHED, // <-- Usar Enum
         })
         continue
       }
@@ -431,18 +427,26 @@ export class ItemsService {
       } catch (err: any) {
         await queryRunner.rollbackTransaction()
 
-        // Manejo de errores duplicados con tu lógica de códigos Postgres
-        let friendlyError = err.message || 'Error interno'
+        let errorCode: string = ItemErrorCode.INTERNAL_ERROR // O un genérico que definas
+
         if (err.code === '23505') {
-          friendlyError = err.detail.includes('sku')
-            ? 'SKU duplicado'
-            : 'Código de barras duplicado'
+          const detail = err.detail?.toLowerCase() || ''
+          if (detail.includes('sku')) {
+            errorCode = ItemErrorCode.DUPLICATE_SKU
+          } else if (detail.includes('barcode')) {
+            errorCode = ItemErrorCode.DUPLICATE_BARCODE
+          } else {
+            errorCode = ItemErrorCode.DUPLICATE_ENTRY
+          }
+        } else {
+          // Si es otro tipo de error, podrías usar el mensaje o un código genérico
+          errorCode = err.message || ItemErrorCode.INTERNAL_ERROR
         }
 
         errorReport.push({
           row: i + 1,
           name: input.name,
-          error: friendlyError,
+          error: errorCode, // <-- Ahora Android recibe el código de error para traducir
         })
       }
       // NOTA: No hacemos release() acá, esperamos al final del bucle
@@ -469,27 +473,23 @@ export class ItemsService {
   async remove(id: string, userId: string): Promise<boolean> {
     const item = await this.findOne(id, userId)
     if (!item) {
-      throw new NotFoundException(`Ítem con ID ${id} no encontrado.`)
+      throw new NotFoundException(ItemErrorCode.ITEM_NOT_FOUND)
     }
 
-    // 1. Validar si es parte de una receta antes de borrar
     const isUsed = await this.recipesService.isItemInAnyRecipe(id, userId)
 
     if (isUsed) {
-      throw new ForbiddenException(
-        `No se puede eliminar "${item.name}" porque es ingrediente de una receta activa.`,
-      )
+      // Ya no enviamos el string largo, enviamos el código del Enum
+      throw new ForbiddenException(ItemErrorCode.ITEM_IS_INGREDIENT)
     }
 
-    // 2. Borrado lógico (Soft Delete)
-    // Esto setea deleted_at y libera el SKU y el cupo del plan Free.
     await this.itemsRepository.softRemove(item)
-
     return true
   }
 
   /**
    * Elimina múltiples ítems validando que el usuario sea PRO.
+   * Si algún ítem es ingrediente de una receta, la operación falla y devuelve los nombres.
    */
   async removeBulk(
     userId: string,
@@ -503,46 +503,59 @@ export class ItemsService {
       )
     }
 
-    // 2. Validación de Límite de Lote (Batch)
-    // Reutilizamos la constante de 50 que definiste arriba
+    // 2. Validación de Límite de Lote
     if (ids.length > this.BATCH_LIMIT_PRO) {
       throw new ForbiddenException(
         `No puedes eliminar más de ${this.BATCH_LIMIT_PRO} ítems a la vez.`,
       )
     }
 
+    // 3. VALIDACIÓN PREVIA (Atómica e Informativa)
+    const itemsInRecipes: string[] = []
+
+    // Obtenemos los nombres de los ítems involucrados
+    const itemsToCheck = await this.itemsRepository.find({
+      where: { id: In(ids), userId },
+    })
+
+    for (const item of itemsToCheck) {
+      const isUsed = await this.recipesService.isItemInAnyRecipe(
+        item.id,
+        userId,
+      )
+      if (isUsed) {
+        itemsInRecipes.push(item.name)
+      }
+    }
+
+    // Si hay al menos un error, disparamos la excepción con los nombres
+    if (itemsInRecipes.length > 0) {
+      throw new ForbiddenException({
+        message: 'ERR_ITEM_IS_INGREDIENT',
+        details: itemsInRecipes, // Se envía como ['Harina', 'Sal']
+      })
+    }
+
+    // 4. TRANSACCIÓN DE BORRADO (Si llegó aquí, no hay ingredientes)
     const queryRunner = this.dataSource.createQueryRunner()
     await queryRunner.connect()
     await queryRunner.startTransaction()
 
     try {
       for (const id of ids) {
-        // Buscamos el ítem dentro de la transacción
         const item = await queryRunner.manager.findOne(Item, {
           where: { id, userId },
         })
 
-        if (!item) {
-          throw new NotFoundException(`Ítem con ID ${id} no encontrado.`)
-        }
+        if (!item) throw new NotFoundException('ERR_ITEM_NOT_FOUND')
 
-        // Validar si es ingrediente de alguna receta
-        const isUsed = await this.recipesService.isItemInAnyRecipe(id, userId)
-        if (isUsed) {
-          throw new ForbiddenException(
-            `Operación cancelada: "${item.name}" es ingrediente de una receta activa.`,
-          )
-        }
-
-        // Soft Delete (Borrado lógico) dentro de la transacción
+        // Soft Delete
         await queryRunner.manager.softRemove(item)
       }
 
-      // Si todo salió bien con los N ítems, confirmamos
       await queryRunner.commitTransaction()
       return true
     } catch (err) {
-      // Si uno falla (ej. es ingrediente), no se borra ninguno
       await queryRunner.rollbackTransaction()
       throw err
     } finally {
