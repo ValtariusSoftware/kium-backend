@@ -18,6 +18,17 @@ export const graphqlConfig = (
   ),
   playground: false,
   introspection: true,
+  formatError: (error) => {
+    return {
+      message: error.message,
+      extensions: {
+        ...error.extensions,
+        // Si el filtro ya puso un array en 'code', lo mantenemos.
+        // Si no, enviamos el mensaje en un array por defecto.
+        code: error.extensions?.code || [error.message],
+      },
+    }
+  },
   plugins: [
     // ApolloServerPluginLandingPageLocalDefault()
     ApolloServerPluginLandingPageLocalDefault({

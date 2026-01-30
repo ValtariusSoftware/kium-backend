@@ -1,6 +1,6 @@
 import { NestFactory } from '@nestjs/core'
 import { AppModule } from './app.module'
-import { ValidationPipe } from '@nestjs/common'
+import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { GqlExceptionFilter } from './utils/filters/graphql-exception.filter'
 
@@ -18,6 +18,14 @@ async function bootstrap() {
       whitelist: true,
       forbidNonWhitelisted: true,
       transform: true,
+      stopAtFirstError: false, // <--- ESTO permite capturar múltiples errores del DTO
+      exceptionFactory: (errors) => {
+        const errorData = errors.map((err) => ({
+          field: err.property,
+          codes: Object.keys(err.constraints || {}),
+        }))
+        return new BadRequestException(errorData)
+      },
     }),
   )
   app.useGlobalFilters(new GqlExceptionFilter())
@@ -40,7 +48,7 @@ Token leído de DataStore (Inicio): 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdW
 
 
 
-REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzY4MzI3OTU0LCJleHAiOjE3Njg5MzI3NTR9.k6MQQuL-ptqqDtUirVuwW9pZUQvXkNg4KoCssQhIWaQ
+REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzY5ODAxMDE0LCJleHAiOjE3NzA0MDU4MTR9.NLELM2m469gKZSrfcPrOuqEQesKqcF3k67WJmmN3DVM
 
 
 

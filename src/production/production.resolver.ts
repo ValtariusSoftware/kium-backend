@@ -44,38 +44,6 @@ export class ProductionResolver {
     return this.productionService.produceItemsBatch(user.id, inputs)
   }
 
-  // @ResolveField(() => Float)
-  // async canProduceQuantity(
-  //   @Parent() item: Item,
-  //   @Context('recipesLoader') recipesLoader: RecipesLoader,
-  // ): Promise<number> {
-  //   if (!item.isProduced) return 0
-
-  //   const recipe = await recipesLoader.load(item.id)
-  //   if (!recipe) return 0
-
-  //   // CAMBIO AQUÍ: Ahora lo pides al ProductionService
-  //   return this.productionService.runVirtualStockMath(recipe)
-  // }
-
-  // @ResolveField(() => Float)
-  // async totalAvailableStock(
-  //   @Parent() item: Item,
-  //   @Context('recipesLoader') recipesLoader: RecipesLoader,
-  // ): Promise<number> {
-  //   let virtual = 0
-
-  //   if (item.isProduced) {
-  //     const recipe = await recipesLoader.load(item.id)
-  //     if (recipe) {
-  //       // CAMBIO AQUÍ: Ahora lo pides al ProductionService
-  //       virtual = this.productionService.runVirtualStockMath(recipe)
-  //     }
-  //   }
-
-  //   return Number(item.stock) + virtual
-  // }
-
   @Query(() => BatchSimulationResponse, {
     name: 'simulateProductionBatch',
     description: 'Simula el consumo de ingredientes sin afectar el stock real.',
