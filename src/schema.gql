@@ -274,6 +274,7 @@ type Query {
   getItemByBarcode(barcode: String!): Item
   itemTransactionHistory(itemId: ID!, pagination: PaginationInput): PaginatedTransactions!
   financialReport(startDate: DateTime!, endDate: DateTime!, groupBy: ReportGroupBy!): FinancialReportResponse!
+  me: User
   users: [User!]!
 
   """Simula el consumo de ingredientes sin afectar el stock real."""
@@ -344,6 +345,7 @@ type Mutation {
   """Registra múltiples movimientos de stock de forma atómica."""
   registerInventoryMovements(registerTransactionInputs: [RegisterTransactionInput!]!): [InventoryTransaction!]!
   adjustItemStock(adjustStockInput: AdjustStockInput!): Item!
+  updateUserAccessLevel(input: UpdateAccessLevelInput!): User!
 
   """Autenticación con el ID Token de Google/Firebase."""
   googleAuth(idToken: String!): AuthPayload!
@@ -433,6 +435,10 @@ input AdjustStockInput {
   quantity: Float!
   type: TransactionType!
   reason: String
+}
+
+input UpdateAccessLevelInput {
+  level: AccessLevel!
 }
 
 input CreateSaleInput {

@@ -72,20 +72,20 @@ export class User {
   subscriptionStartDate?: Date
 
   @Column({
+    type: 'enum',
+    enum: SubscriptionStatus,
+    enumName: 'subscriptionstatus', // Asegúrate que en Postgres sea así o 'subscription_status'
     name: 'subscription_status',
-    type: 'varchar', // 💡 Mantenemos 'varchar' para evitar el crash del compilador
-    length: 50,
-    // Eliminamos la propiedad 'enum' de TypeORM aquí para evitar conflictos
     default: SubscriptionStatus.NON_SUBSCRIBED,
   })
   @Field(() => SubscriptionStatus)
   subscriptionStatus: SubscriptionStatus
 
   @Column({
+    type: 'enum',
+    enum: AccessLevel,
+    enumName: 'accesslevel', // Debe coincidir con el nombre del TYPE en Postgres
     name: 'access_level',
-    type: 'varchar', // 💡 Mantenemos 'varchar'
-    length: 50,
-    // Eliminamos la propiedad 'enum' de TypeORM aquí
     default: AccessLevel.FREE,
   })
   @Field(() => AccessLevel)
