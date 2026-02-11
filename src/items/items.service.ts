@@ -571,63 +571,84 @@ export class ItemsService {
     accessLevel: AccessLevel,
     inputs: BulkUpdateItemInput[],
   ): Promise<Item[]> {
+    // 1. Validaciones globales (Usando Enums)
     if (accessLevel !== AccessLevel.PRO) {
-      throw new ForbiddenException(
-        'La actualización masiva es exclusiva para usuarios PRO.',
-      )
+      throw new ForbiddenException(ItemErrorCode.PRO_FEATURE_ONLY)
     }
 
     if (inputs.length > this.BATCH_LIMIT_PRO) {
-      throw new ForbiddenException(
-        `Límite excedido: máx ${this.BATCH_LIMIT_PRO} ítems.`,
-      )
+      throw new ForbiddenException(ItemErrorCode.BULK_LIMIT_EXCEEDED)
     }
 
     const queryRunner = this.dataSource.createQueryRunner()
     await queryRunner.connect()
-    await queryRunner.startTransaction()
 
-    try {
-      for (const input of inputs) {
-        const { id, ...updateData } = input
+    const errorDetails: string[] = [] // Formato: "Nombre:CodigoEnum"
+    const updatedIds: string[] = []
 
+    for (const input of inputs) {
+      await queryRunner.startTransaction()
+      try {
         const item = await queryRunner.manager.findOne(Item, {
-          where: { id, userId },
+          where: { id: input.id, userId },
         })
 
-        if (!item) throw new Error(`El ítem con ID "${id}" no existe.`)
+        if (!item) {
+          // Si no existe, no hacemos rollback de todo, solo marcamos el error
+          errorDetails.push(
+            `${input.name || input.id}:${ItemErrorCode.ITEM_NOT_FOUND}`,
+          )
+          await queryRunner.rollbackTransaction()
+          continue
+        }
 
-        // Si cambia el precio de venta, recalculamos roles
-        if (updateData.salePrice !== undefined) {
+        // Recalcular roles si aplica
+        if (input.salePrice !== undefined) {
           const newRoles = this.calculateItemRoles(
             item.costPrice,
-            updateData.salePrice,
+            input.salePrice,
             item,
           )
           Object.assign(item, newRoles)
         }
 
-        Object.assign(item, updateData)
+        Object.assign(item, input)
         await queryRunner.manager.save(item)
+
+        await queryRunner.commitTransaction() // Éxito individual
+        updatedIds.push(item.id)
+      } catch (err: any) {
+        await queryRunner.rollbackTransaction()
+
+        // Mapeo preciso usando tu lógica de duplicados
+        let errorCode: ItemErrorCode = ItemErrorCode.INTERNAL_ERROR
+
+        if (err.code === '23505') {
+          const detail = err.detail?.toLowerCase() || ''
+          if (detail.includes('sku')) errorCode = ItemErrorCode.DUPLICATE_SKU
+          else if (detail.includes('barcode'))
+            errorCode = ItemErrorCode.DUPLICATE_BARCODE
+          else errorCode = ItemErrorCode.DUPLICATE_ENTRY
+        }
+
+        errorDetails.push(`${input.name || input.id}:${errorCode}`)
       }
-
-      await queryRunner.commitTransaction()
-
-      return this.itemsRepository.find({
-        where: { id: In(inputs.map((i) => i.id)), userId },
-        order: { name: 'ASC' },
-      })
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (err: any) {
-      await queryRunner.rollbackTransaction()
-      // ... tu lógica de manejo de errores amigables se mantiene igual
-      throw new ForbiddenException({
-        message: 'La actualización masiva falló.',
-        detail: err.message,
-      })
-    } finally {
-      await queryRunner.release()
     }
+    await queryRunner.release()
+
+    // 2. Si hubo errores en el proceso parcial, lanzamos la excepción para el GqlExceptionFilter
+    if (errorDetails.length > 0) {
+      throw new ForbiddenException({
+        message: ItemErrorCode.BULK_PARTIAL_SUCCESS, // Usamos el Enum
+        details: errorDetails,
+      })
+    }
+
+    // 3. Éxito total
+    return this.itemsRepository.find({
+      where: { id: In(updatedIds), userId },
+      order: { name: 'ASC' },
+    })
   }
 
   /**

@@ -92,4 +92,23 @@ export class UsersService {
     // NOTA: No se necesita un 'return' fuera del try/catch porque tanto el if como el catch/throw
     // cubren todas las rutas de la función.
   }
+
+  async changeAccessLevel(userId: string, level: AccessLevel): Promise<User> {
+    const user = await this.findOneById(userId)
+    if (!user) throw new InternalServerErrorException('Usuario no encontrado')
+
+    user.accessLevel = level
+
+    if (level === AccessLevel.PRO) {
+      user.subscriptionStatus = SubscriptionStatus.ACTIVE
+      if (!user.subscriptionStartDate) {
+        user.subscriptionStartDate = new Date()
+      }
+    } else {
+      user.subscriptionStatus = SubscriptionStatus.NON_SUBSCRIBED
+      user.subscriptionStartDate = undefined // 👈 Ahora esto no dará error
+    }
+
+    return this.usersRepository.save(user)
+  }
 }
