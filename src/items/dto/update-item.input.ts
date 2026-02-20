@@ -48,11 +48,11 @@ export class BulkUpdateItemInput {
   @Field({ nullable: true })
   name?: string
 
-  @Field(() => BaseUnit, { nullable: true })
-  baseUnit?: BaseUnit
+  // @Field(() => BaseUnit, { nullable: true })
+  // baseUnit?: BaseUnit
 
-  @Field(() => Float, { nullable: true })
-  conversionToBaseQty?: number
+  // @Field(() => Float, { nullable: true })
+  // conversionToBaseQty?: number
 
   @Field(() => Float, { nullable: true })
   minStockAlert?: number
