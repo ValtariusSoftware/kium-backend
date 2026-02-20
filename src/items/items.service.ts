@@ -266,11 +266,7 @@ export class ItemsService {
       where: { id: itemId, userId: userId },
     })
 
-    if (!item) {
-      // En lugar de lanzar una excepción (que manejaría el resolver),
-      // devolvemos null, permitiendo al RecipesService decidir qué error lanzar.
-      return null
-    }
+    if (!item) return null
 
     return item
   }
@@ -586,7 +582,89 @@ export class ItemsService {
     const errorDetails: string[] = [] // Formato: "Nombre:CodigoEnum"
     const updatedIds: string[] = []
 
+    // for (const input of inputs) {
+    //   await queryRunner.startTransaction()
+    //   try {
+    //     const item = await queryRunner.manager.findOne(Item, {
+    //       where: { id: input.id, userId },
+    //     })
+
+    //     if (!item) {
+    //       // Si no existe, no hacemos rollback de todo, solo marcamos el error
+    //       errorDetails.push(
+    //         `${input.name || input.id}:${ItemErrorCode.ITEM_NOT_FOUND}`,
+    //       )
+    //       await queryRunner.rollbackTransaction()
+    //       continue
+    //     }
+
+    //     // --- VALIDACIONES DE NEGOCIO ---
+
+    //     // 1. Validar Nombre no vacío
+    //     if (input.name !== undefined && input.name.trim().length === 0) {
+    //       errorDetails.push(`${item.name}:${ItemErrorCode.NAME_EMPTY}`)
+    //       await queryRunner.rollbackTransaction()
+    //       continue
+    //     }
+
+    //     // 2. Validar Cantidad de Conversión (No <= 0)
+    //     if (
+    //       input.conversionToBaseQty !== undefined &&
+    //       input.conversionToBaseQty <= 0
+    //     ) {
+    //       errorDetails.push(`${item.name}:${ItemErrorCode.INVALID_CONVERSION}`)
+    //       await queryRunner.rollbackTransaction()
+    //       continue
+    //     }
+
+    //     // 3. Validar Cambio de Unidad Base si es ingrediente
+    //     if (input.baseUnit !== undefined && input.baseUnit !== item.baseUnit) {
+    //       // Si el ítem está marcado como ingrediente, bloqueamos el cambio de unidad
+    //       if (item.isIngredient) {
+    //         errorDetails.push(`${item.name}:${ItemErrorCode.BASE_UNIT_LOCKED}`)
+    //         await queryRunner.rollbackTransaction()
+    //         continue
+    //       }
+    //     }
+
+    //     // Recalcular roles si aplica
+    //     if (input.salePrice !== undefined) {
+    //       const newRoles = this.calculateItemRoles(
+    //         item.costPrice,
+    //         input.salePrice,
+    //         item,
+    //       )
+    //       Object.assign(item, newRoles)
+    //     }
+
+    //     Object.assign(item, input)
+    //     await queryRunner.manager.save(item)
+
+    //     await queryRunner.commitTransaction() // Éxito individual
+    //     updatedIds.push(item.id)
+    //   } catch (err: any) {
+    //     await queryRunner.rollbackTransaction()
+
+    //     // Mapeo preciso usando tu lógica de duplicados
+    //     let errorCode: ItemErrorCode = ItemErrorCode.INTERNAL_ERROR
+
+    //     if (err.code === '23505') {
+    //       const detail = err.detail?.toLowerCase() || ''
+    //       if (detail.includes('sku')) errorCode = ItemErrorCode.DUPLICATE_SKU
+    //       else if (detail.includes('barcode'))
+    //         errorCode = ItemErrorCode.DUPLICATE_BARCODE
+    //       else errorCode = ItemErrorCode.DUPLICATE_ENTRY
+    //     }
+
+    //     errorDetails.push(`${input.name || input.id}:${errorCode}`)
+    //   }
+    // }
     for (const input of inputs) {
+      // 🚩 LIMPIEZA INICIAL: Trim a los strings antes de cualquier lógica
+      if (input.name) input.name = input.name.trim()
+      if (input.sku) input.sku = input.sku.trim()
+      if (input.barcode) input.barcode = input.barcode.trim()
+
       await queryRunner.startTransaction()
       try {
         const item = await queryRunner.manager.findOne(Item, {
@@ -594,7 +672,6 @@ export class ItemsService {
         })
 
         if (!item) {
-          // Si no existe, no hacemos rollback de todo, solo marcamos el error
           errorDetails.push(
             `${input.name || input.id}:${ItemErrorCode.ITEM_NOT_FOUND}`,
           )
@@ -602,7 +679,35 @@ export class ItemsService {
           continue
         }
 
-        // Recalcular roles si aplica
+        // --- VALIDACIONES DE NEGOCIO ---
+
+        // 1. Validar Nombre (Ya tiene el trim hecho arriba)
+        if (input.name !== undefined && input.name.length === 0) {
+          errorDetails.push(`${item.name}:${ItemErrorCode.NAME_EMPTY}`)
+          await queryRunner.rollbackTransaction()
+          continue
+        }
+
+        // 2. Validar Cantidad de Conversión
+        // if (
+        //   input.conversionToBaseQty !== undefined &&
+        //   input.conversionToBaseQty <= 0
+        // ) {
+        //   errorDetails.push(`${item.name}:${ItemErrorCode.INVALID_CONVERSION}`)
+        //   await queryRunner.rollbackTransaction()
+        //   continue
+        // }
+
+        // 3. Validar Cambio de Unidad Base (Evitar inconsistencias en recetas)
+        // if (input.baseUnit !== undefined && input.baseUnit !== item.baseUnit) {
+        //   if (item.isIngredient) {
+        //     errorDetails.push(`${item.name}:${ItemErrorCode.BASE_UNIT_LOCKED}`)
+        //     await queryRunner.rollbackTransaction()
+        //     continue
+        //   }
+        // }
+
+        // Recalcular roles (Profit, etc) si el precio de venta cambió
         if (input.salePrice !== undefined) {
           const newRoles = this.calculateItemRoles(
             item.costPrice,
@@ -612,17 +717,16 @@ export class ItemsService {
           Object.assign(item, newRoles)
         }
 
+        // 🚩 Object.assign ahora usará los valores con TRIM
         Object.assign(item, input)
         await queryRunner.manager.save(item)
 
-        await queryRunner.commitTransaction() // Éxito individual
+        await queryRunner.commitTransaction()
         updatedIds.push(item.id)
       } catch (err: any) {
         await queryRunner.rollbackTransaction()
 
-        // Mapeo preciso usando tu lógica de duplicados
         let errorCode: ItemErrorCode = ItemErrorCode.INTERNAL_ERROR
-
         if (err.code === '23505') {
           const detail = err.detail?.toLowerCase() || ''
           if (detail.includes('sku')) errorCode = ItemErrorCode.DUPLICATE_SKU

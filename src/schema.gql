@@ -410,8 +410,6 @@ input UpdateItemInput {
 input BulkUpdateItemInput {
   id: ID!
   name: String
-  baseUnit: BaseUnit
-  conversionToBaseQty: Float
   minStockAlert: Float
   salePrice: Float
   barcode: String
