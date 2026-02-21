@@ -23,6 +23,8 @@ import { BulkUpdateItemInput, UpdateItemInput } from './dto/update-item.input'
 import { PaginatedItems } from './types/paginated-items.type'
 import { PaginationInput } from 'src/common/dto/pagination.input'
 import { ItemErrorCode } from './enums/item-error-code.enum'
+import { RecipeIngredient } from 'src/recipes/entities/recipe-ingredient.entity'
+import { Recipe } from 'src/recipes/entities/recipe.entity'
 
 interface DatabaseError extends Error {
   code?: string
@@ -582,83 +584,6 @@ export class ItemsService {
     const errorDetails: string[] = [] // Formato: "Nombre:CodigoEnum"
     const updatedIds: string[] = []
 
-    // for (const input of inputs) {
-    //   await queryRunner.startTransaction()
-    //   try {
-    //     const item = await queryRunner.manager.findOne(Item, {
-    //       where: { id: input.id, userId },
-    //     })
-
-    //     if (!item) {
-    //       // Si no existe, no hacemos rollback de todo, solo marcamos el error
-    //       errorDetails.push(
-    //         `${input.name || input.id}:${ItemErrorCode.ITEM_NOT_FOUND}`,
-    //       )
-    //       await queryRunner.rollbackTransaction()
-    //       continue
-    //     }
-
-    //     // --- VALIDACIONES DE NEGOCIO ---
-
-    //     // 1. Validar Nombre no vacío
-    //     if (input.name !== undefined && input.name.trim().length === 0) {
-    //       errorDetails.push(`${item.name}:${ItemErrorCode.NAME_EMPTY}`)
-    //       await queryRunner.rollbackTransaction()
-    //       continue
-    //     }
-
-    //     // 2. Validar Cantidad de Conversión (No <= 0)
-    //     if (
-    //       input.conversionToBaseQty !== undefined &&
-    //       input.conversionToBaseQty <= 0
-    //     ) {
-    //       errorDetails.push(`${item.name}:${ItemErrorCode.INVALID_CONVERSION}`)
-    //       await queryRunner.rollbackTransaction()
-    //       continue
-    //     }
-
-    //     // 3. Validar Cambio de Unidad Base si es ingrediente
-    //     if (input.baseUnit !== undefined && input.baseUnit !== item.baseUnit) {
-    //       // Si el ítem está marcado como ingrediente, bloqueamos el cambio de unidad
-    //       if (item.isIngredient) {
-    //         errorDetails.push(`${item.name}:${ItemErrorCode.BASE_UNIT_LOCKED}`)
-    //         await queryRunner.rollbackTransaction()
-    //         continue
-    //       }
-    //     }
-
-    //     // Recalcular roles si aplica
-    //     if (input.salePrice !== undefined) {
-    //       const newRoles = this.calculateItemRoles(
-    //         item.costPrice,
-    //         input.salePrice,
-    //         item,
-    //       )
-    //       Object.assign(item, newRoles)
-    //     }
-
-    //     Object.assign(item, input)
-    //     await queryRunner.manager.save(item)
-
-    //     await queryRunner.commitTransaction() // Éxito individual
-    //     updatedIds.push(item.id)
-    //   } catch (err: any) {
-    //     await queryRunner.rollbackTransaction()
-
-    //     // Mapeo preciso usando tu lógica de duplicados
-    //     let errorCode: ItemErrorCode = ItemErrorCode.INTERNAL_ERROR
-
-    //     if (err.code === '23505') {
-    //       const detail = err.detail?.toLowerCase() || ''
-    //       if (detail.includes('sku')) errorCode = ItemErrorCode.DUPLICATE_SKU
-    //       else if (detail.includes('barcode'))
-    //         errorCode = ItemErrorCode.DUPLICATE_BARCODE
-    //       else errorCode = ItemErrorCode.DUPLICATE_ENTRY
-    //     }
-
-    //     errorDetails.push(`${input.name || input.id}:${errorCode}`)
-    //   }
-    // }
     for (const input of inputs) {
       // 🚩 LIMPIEZA INICIAL: Trim a los strings antes de cualquier lógica
       if (input.name) input.name = input.name.trim()
@@ -687,25 +612,6 @@ export class ItemsService {
           await queryRunner.rollbackTransaction()
           continue
         }
-
-        // 2. Validar Cantidad de Conversión
-        // if (
-        //   input.conversionToBaseQty !== undefined &&
-        //   input.conversionToBaseQty <= 0
-        // ) {
-        //   errorDetails.push(`${item.name}:${ItemErrorCode.INVALID_CONVERSION}`)
-        //   await queryRunner.rollbackTransaction()
-        //   continue
-        // }
-
-        // 3. Validar Cambio de Unidad Base (Evitar inconsistencias en recetas)
-        // if (input.baseUnit !== undefined && input.baseUnit !== item.baseUnit) {
-        //   if (item.isIngredient) {
-        //     errorDetails.push(`${item.name}:${ItemErrorCode.BASE_UNIT_LOCKED}`)
-        //     await queryRunner.rollbackTransaction()
-        //     continue
-        //   }
-        // }
 
         // Recalcular roles (Profit, etc) si el precio de venta cambió
         if (input.salePrice !== undefined) {
@@ -767,5 +673,94 @@ export class ItemsService {
         userId: userId,
       },
     })
+  }
+
+  /**
+   * Cambiar factor y unidad de producto o crear nuevo item.
+   */
+  async changeItemStructure(
+    userId: string,
+    input: UpdateItemInput,
+  ): Promise<Item> {
+    const queryRunner = this.dataSource.createQueryRunner()
+    await queryRunner.connect()
+    await queryRunner.startTransaction()
+
+    try {
+      const oldItem = await queryRunner.manager.findOne(Item, {
+        where: { id: input.id, userId },
+      })
+
+      if (!oldItem) throw new NotFoundException(ItemErrorCode.ITEM_NOT_FOUND)
+
+      const hasHistory =
+        await this.inventoryTransactionsService.hasOperationalHistory(
+          userId,
+          oldItem.id,
+        )
+
+      if (!hasHistory) {
+        const updated = await this.update(userId, input)
+        await queryRunner.commitTransaction()
+        return updated
+      }
+
+      const timestamp = Date.now()
+      const originalSku = oldItem.sku
+      const originalBarcode = oldItem.barcode
+
+      // Liberamos códigos únicos
+      await queryRunner.manager.update(Item, oldItem.id, {
+        sku: originalSku ? `${originalSku}_old_${timestamp}` : null,
+        barcode: originalBarcode ? `${originalBarcode}_old_${timestamp}` : null,
+      })
+
+      await queryRunner.manager.softRemove(oldItem)
+
+      const newItemData = { ...oldItem, ...input }
+
+      delete (newItemData as Partial<Item>).id
+      delete (newItemData as Partial<Item>).stock
+      delete (newItemData as Partial<Item>).createdAt
+      delete (newItemData as Partial<Item>).updatedAt
+      delete (newItemData as Partial<Item>).deletedAt // Importante borrar este también
+
+      newItemData.sku = originalSku
+      newItemData.barcode = originalBarcode
+      newItemData.stock = 0
+      newItemData.userId = userId
+
+      const newItem = queryRunner.manager.create(Item, newItemData)
+      const savedItem = await queryRunner.manager.save(newItem)
+
+      // 1. Mudanza si era ingrediente
+      if (oldItem.isIngredient) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(RecipeIngredient)
+          .set({ ingredientItemId: savedItem.id })
+          .where('ingredientItemId = :oldId', { oldId: oldItem.id })
+          .execute()
+      }
+
+      // 2. Mudanza si era el producto final de una receta
+      if (oldItem.isProduced) {
+        await queryRunner.manager
+          .createQueryBuilder()
+          .update(Recipe)
+          .set({ finalProductId: savedItem.id })
+          .where('finalProductId = :oldId', { oldId: oldItem.id })
+          .execute()
+      }
+
+      await queryRunner.commitTransaction()
+      return savedItem
+    } catch (err) {
+      await queryRunner.rollbackTransaction()
+      this.handleDuplicateError(err)
+      throw err
+    } finally {
+      await queryRunner.release()
+    }
   }
 }

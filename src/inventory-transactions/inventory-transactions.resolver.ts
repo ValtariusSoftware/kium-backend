@@ -82,10 +82,22 @@ export class InventoryTransactionsResolver {
     @Parent() transaction: InventoryTransaction,
     @Context('itemsLoader') itemsLoader: ItemsLoader,
   ): Promise<Item> {
+    // 🛡️ PLAN B: Si el loader no está en el contexto (común en pruebas/playground),
+    // usamos el service directamente para no romper la respuesta.
     if (!itemsLoader) {
-      throw new Error('ItemsLoader no disponible')
+      const item = await this.itemsService.findOne(
+        transaction.itemId,
+        transaction.userId,
+      )
+      if (!item) {
+        throw new NotFoundException(
+          `El ítem con ID ${transaction.itemId} no existe (Plan B).`,
+        )
+      }
+      return item
     }
 
+    // PLAN A: Usar el loader (Eficiencia en producción)
     const item = await itemsLoader.load(transaction.itemId)
 
     if (!item) {

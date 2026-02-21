@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, Repository, QueryRunner } from 'typeorm'
+import { DataSource, Repository, QueryRunner, Not } from 'typeorm'
 import { InventoryTransaction } from './entities/inventory-transaction.entity'
 import { RegisterTransactionInput } from './dto/register-transaction.input'
 import { Item } from '../items/entities/item.entity' // Necesario para actualizar stock
@@ -336,5 +336,20 @@ export class InventoryTransactionsService {
     } finally {
       await queryRunner.release()
     }
+  }
+
+  async hasOperationalHistory(
+    userId: string,
+    itemId: string,
+  ): Promise<boolean> {
+    const count = await this.transactionRepository.count({
+      where: {
+        itemId,
+        userId,
+        // Solo cuenta si hay movimientos que NO sean el inicial
+        type: Not(TransactionType.INITIAL_INVENTORY),
+      },
+    })
+    return count > 0
   }
 }

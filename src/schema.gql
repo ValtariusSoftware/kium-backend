@@ -74,6 +74,7 @@ type Item {
   isIngredient: Boolean!
   canProduceQuantity: Float!
   totalAvailableStock: Float!
+  hasOperationalHistory: Boolean!
 }
 
 type User {
@@ -336,6 +337,7 @@ type Mutation {
   removeItem(id: ID!): Boolean!
   removeItemsBulk(ids: [ID!]!): Boolean!
   updateItemsBulk(inputs: [BulkUpdateItemInput!]!): [Item!]!
+  changeItemStructure(input: UpdateItemInput!): Item!
 
   """
   Registra un movimiento de stock (Compra, Venta, Ajuste, Producción) y actualiza el stock total del Item.
