@@ -21,12 +21,14 @@ import { PaginationInput } from 'src/common/dto/pagination.input'
 import { RecipesLoader } from 'src/recipes/recipes.loader'
 import { Recipe } from 'src/recipes/entities/recipe.entity'
 import { RecipesService } from 'src/recipes/recipes.service'
+import { InventoryTransactionsService } from 'src/inventory-transactions/inventory-transactions.service'
 
 @Resolver(() => Item)
 export class ItemsResolver {
   constructor(
     private readonly itemsService: ItemsService,
     private readonly recipesService: RecipesService,
+    private readonly inventoryTransactionsService: InventoryTransactionsService,
   ) {}
 
   @Mutation(() => Item)
@@ -185,5 +187,29 @@ export class ItemsResolver {
     }
 
     return Number(item.stock) + virtual
+  }
+  // Lógica para determinar si el ítem tiene historial (bloqueo de UI)
+  @ResolveField(() => Boolean)
+  async hasOperationalHistory(
+    @Parent() item: Item,
+    @CurrentUser() user: User,
+  ): Promise<boolean> {
+    // Forzamos la espera del resultado
+    const hasHistory =
+      await this.inventoryTransactionsService.hasOperationalHistory(
+        user.id,
+        item.id,
+      )
+    console.log(`[DEBUG] Item: ${item.name}, HasHistory: ${hasHistory}`) // Agregá este log para ver qué pasa en consola
+    return hasHistory
+  }
+
+  // Mutation para cambiar unidad base/factor o clonar
+  @Mutation(() => Item)
+  async changeItemStructure(
+    @Args('input') input: UpdateItemInput,
+    @CurrentUser() user: User, // Usamos el decorador directamente
+  ): Promise<Item> {
+    return this.itemsService.changeItemStructure(user.id, input)
   }
 }
