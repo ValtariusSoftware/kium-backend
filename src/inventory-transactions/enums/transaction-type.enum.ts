@@ -4,6 +4,7 @@ import { registerEnumType } from '@nestjs/graphql'
 export enum TransactionType {
   // Entradas (Aumentan el stock)
   INITIAL_INVENTORY = 'INITIAL_INVENTORY', // Stock inicial al crear el ítem
+  MEASUREMENT_ADJUSTMENT = 'MEASUREMENT_ADJUSTMENT',
   PURCHASE = 'PURCHASE', // Compra a proveedor
   PRODUCTION_IN = 'PRODUCTION_IN', // Entrada de producto final fabricado
   ADJUSTMENT_IN = 'ADJUSTMENT_IN', // Corrección o hallazgo de stock

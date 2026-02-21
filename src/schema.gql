@@ -72,6 +72,7 @@ type Item {
   isProduced: Boolean!
   isPurchasable: Boolean!
   isIngredient: Boolean!
+  parentId: ID
   canProduceQuantity: Float!
   totalAvailableStock: Float!
   hasOperationalHistory: Boolean!
@@ -146,6 +147,7 @@ type InventoryTransaction {
 """Tipos de movimientos de inventario soportados por el sistema."""
 enum TransactionType {
   INITIAL_INVENTORY
+  MEASUREMENT_ADJUSTMENT
   PURCHASE
   PRODUCTION_IN
   ADJUSTMENT_IN

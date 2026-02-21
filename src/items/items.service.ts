@@ -699,41 +699,78 @@ export class ItemsService {
           oldItem.id,
         )
 
+      // CASO A: Sin historial operativo real -> Update directo
       if (!hasHistory) {
         const updated = await this.update(userId, input)
         await queryRunner.commitTransaction()
         return updated
       }
 
+      // CASO B: Con historial -> Clonación (Versioning)
       const timestamp = Date.now()
       const originalSku = oldItem.sku
       const originalBarcode = oldItem.barcode
+      const stockToClear = Number(oldItem.stock || 0)
 
-      // Liberamos códigos únicos
+      // 1. Vaciado de stock del ítem viejo para auditoría
+      if (stockToClear !== 0) {
+        await this.inventoryTransactionsService.registerMovement(
+          userId,
+          {
+            itemId: oldItem.id,
+            type: TransactionType.MEASUREMENT_ADJUSTMENT,
+            quantity: -stockToClear, // Restamos todo lo que tiene
+            notes: `Vaciado por cambio de estructura a nueva versión.`,
+            documentRef: `REF-OLD-${timestamp}`,
+          },
+          queryRunner,
+        )
+      }
+
+      // 2. Liberamos códigos únicos y forzamos stock 0 en el viejo
       await queryRunner.manager.update(Item, oldItem.id, {
         sku: originalSku ? `${originalSku}_old_${timestamp}` : null,
         barcode: originalBarcode ? `${originalBarcode}_old_${timestamp}` : null,
+        stock: 0,
       })
 
       await queryRunner.manager.softRemove(oldItem)
 
-      const newItemData = { ...oldItem, ...input }
+      // 3. Preparación del nuevo ítem (Heredando el parentId)
+      // Si el viejo ya tenía parentId, el nuevo lo mantiene. Si no, el viejo es el padre.
+      const currentParentId = oldItem.parentId || oldItem.id
 
-      delete (newItemData as Partial<Item>).id
-      delete (newItemData as Partial<Item>).stock
-      delete (newItemData as Partial<Item>).createdAt
-      delete (newItemData as Partial<Item>).updatedAt
-      delete (newItemData as Partial<Item>).deletedAt // Importante borrar este también
+      const newItemData: Partial<Item> = {
+        ...oldItem,
+        ...input,
+        id: undefined,
+        stock: 0,
+        parentId: currentParentId,
+        createdAt: undefined,
+        updatedAt: undefined,
+        deletedAt: undefined,
+        sku: originalSku,
+        barcode: originalBarcode,
+        userId: userId,
+      }
 
-      newItemData.sku = originalSku
-      newItemData.barcode = originalBarcode
-      newItemData.stock = 0
-      newItemData.userId = userId
-
-      const newItem = queryRunner.manager.create(Item, newItemData)
+      const newItem = queryRunner.manager.create(Item, newItemData as Item)
       const savedItem = await queryRunner.manager.save(newItem)
 
-      // 1. Mudanza si era ingrediente
+      // 4. Registro de "Folio 1" en el historial del nuevo ítem
+      await this.inventoryTransactionsService.registerMovement(
+        userId,
+        {
+          itemId: savedItem.id,
+          type: TransactionType.MEASUREMENT_ADJUSTMENT,
+          quantity: 0,
+          notes: `Inicio de nueva versión (Viene de ID: ${oldItem.id}).`,
+          documentRef: `REF-NEW-${timestamp}`,
+        },
+        queryRunner,
+      )
+
+      // 5. Migración de dependencias (Recetas e Ingredientes)
       if (oldItem.isIngredient) {
         await queryRunner.manager
           .createQueryBuilder()
@@ -743,7 +780,6 @@ export class ItemsService {
           .execute()
       }
 
-      // 2. Mudanza si era el producto final de una receta
       if (oldItem.isProduced) {
         await queryRunner.manager
           .createQueryBuilder()

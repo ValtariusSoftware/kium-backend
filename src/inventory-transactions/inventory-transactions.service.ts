@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { DataSource, Repository, QueryRunner, Not } from 'typeorm'
+import { DataSource, Repository, QueryRunner, Not, In } from 'typeorm'
 import { InventoryTransaction } from './entities/inventory-transaction.entity'
 import { RegisterTransactionInput } from './dto/register-transaction.input'
 import { Item } from '../items/entities/item.entity' // Necesario para actualizar stock
@@ -71,10 +71,21 @@ export class InventoryTransactionsService {
         TransactionType.ADJUSTMENT_OUT,
         TransactionType.CONSUMPTION,
       ]
+      // Si es un ajuste de medida, respetamos el signo que viene (positivo o negativo)
+      // Si es un tipo de salida conocido, forzamos negativo.
+      // Si es cualquier otro (compra, inicial), forzamos positivo.
+      let finalQuantity: number
+      if (input.type === TransactionType.MEASUREMENT_ADJUSTMENT) {
+        finalQuantity = input.quantity
+      } else {
+        finalQuantity = outTypes.includes(input.type)
+          ? -Math.abs(input.quantity)
+          : Math.abs(input.quantity)
+      }
 
-      const finalQuantity = outTypes.includes(input.type)
-        ? -Math.abs(input.quantity)
-        : Math.abs(input.quantity)
+      // const finalQuantity = outTypes.includes(input.type)
+      //   ? -Math.abs(input.quantity)
+      //   : Math.abs(input.quantity)
 
       // --- 🛡️ VALIDACIÓN DE STOCK SIMPLE ---
       if (outTypes.includes(input.type)) {
@@ -186,6 +197,80 @@ export class InventoryTransactionsService {
     return { transactions, total }
   }
 
+  // async getFinancialReport(
+  //   userId: string,
+  //   startDate: Date,
+  //   endDate: Date,
+  //   groupBy: ReportGroupBy,
+  // ): Promise<FinancialReportResponse> {
+  //   const dateTrunc = groupBy === ReportGroupBy.DAY ? 'day' : 'month'
+  //   const format = groupBy === ReportGroupBy.DAY ? 'YYYY-MM-DD' : 'YYYY-MM'
+
+  //   const results = await this.transactionRepository
+  //     .createQueryBuilder('t')
+  //     .select(
+  //       `TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`,
+  //       'label',
+  //     )
+  //     .addSelect(
+  //       `SUM(
+  //         CASE
+  //           WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot
+  //           WHEN t.type = 'RETURN_FROM_SALE' THEN -ABS(t.quantity) * t.salePriceSnapshot
+  //           ELSE 0
+  //         END
+  //       )`,
+  //       'revenue',
+  //     )
+  //     .addSelect(
+  //       `SUM(
+  //         CASE
+  //           WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unitCostSnapshot
+  //           WHEN t.type = 'RETURN_FROM_SALE' THEN -ABS(t.quantity) * t.unitCostSnapshot
+  //           ELSE 0
+  //         END
+  //       )`,
+  //       'cost',
+  //     )
+  //     .addSelect(
+  //       `SUM(CASE WHEN t.type IN ('ADJUSTMENT_OUT', 'CONSUMPTION') THEN ABS(t.quantity) * t.unitCostSnapshot ELSE 0 END)`,
+  //       'losses',
+  //     )
+  //     .where('t.userId = :userId', { userId })
+  //     .andWhere('t.createdAt BETWEEN :startDate AND :endDate', {
+  //       startDate,
+  //       endDate,
+  //     })
+  //     .groupBy(`TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`)
+  //     .orderBy('label', 'ASC')
+  //     .getRawMany()
+
+  //   const data: FinancialDataPoint[] = results.map((r) => ({
+  //     label: r.label,
+  //     revenue: Number(r.revenue || 0),
+  //     cost: Number(r.cost || 0),
+  //     losses: Number(r.losses || 0),
+  //     netProfit:
+  //       Math.round(
+  //         (Number(r.revenue || 0) -
+  //           Number(r.cost || 0) -
+  //           Number(r.losses || 0)) *
+  //           100,
+  //       ) / 100,
+  //   }))
+
+  //   const totalNetProfit =
+  //     Math.round(data.reduce((sum, p) => sum + p.netProfit, 0) * 100) / 100
+
+  //   return { data, totalNetProfit }
+  // }
+
+  /**
+   * Genera un reporte financiero consolidado agrupando transacciones por tiempo.
+   * Utiliza un JOIN con la tabla de ítems para unificar el historial de productos
+   * que han sido clonados (versionados), permitiendo que las ventas de un ítem "hijo"
+   * computen junto a las de su "padre" original mediante el parent_id.
+   */
   async getFinancialReport(
     userId: string,
     startDate: Date,
@@ -197,6 +282,8 @@ export class InventoryTransactionsService {
 
     const results = await this.transactionRepository
       .createQueryBuilder('t')
+      // Unimos con la tabla de ítems para acceder al parentId
+      .innerJoin('t.item', 'item')
       .select(
         `TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`,
         'label',
@@ -222,7 +309,12 @@ export class InventoryTransactionsService {
         'cost',
       )
       .addSelect(
-        `SUM(CASE WHEN t.type IN ('ADJUSTMENT_OUT', 'CONSUMPTION') THEN ABS(t.quantity) * t.unitCostSnapshot ELSE 0 END)`,
+        `SUM(
+          CASE 
+            WHEN t.type IN ('ADJUSTMENT_OUT', 'CONSUMPTION') THEN ABS(t.quantity) * t.unitCostSnapshot 
+            ELSE 0 
+          END
+        )`,
         'losses',
       )
       .where('t.userId = :userId', { userId })
@@ -230,6 +322,7 @@ export class InventoryTransactionsService {
         startDate,
         endDate,
       })
+      // Agrupamos por la etiqueta de tiempo
       .groupBy(`TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`)
       .orderBy('label', 'ASC')
       .getRawMany()
@@ -347,7 +440,12 @@ export class InventoryTransactionsService {
         itemId,
         userId,
         // Solo cuenta si hay movimientos que NO sean el inicial
-        type: Not(TransactionType.INITIAL_INVENTORY),
+        type: Not(
+          In([
+            TransactionType.INITIAL_INVENTORY,
+            TransactionType.MEASUREMENT_ADJUSTMENT,
+          ]),
+        ),
       },
     })
     return count > 0
