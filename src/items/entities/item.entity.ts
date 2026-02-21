@@ -166,4 +166,13 @@ export class Item {
   @Column({ name: 'is_ingredient', type: 'boolean', default: false })
   @Field(() => Boolean)
   isIngredient: boolean
+
+  @Column({ type: 'uuid', name: 'parent_id', nullable: true })
+  @Field(() => ID, { nullable: true })
+  parentId: string | null
+
+  // Opcional: Una relación lógica para poder hacer un Join si fuera necesario
+  @ManyToOne(() => Item, { nullable: true })
+  @JoinColumn({ name: 'parent_id' })
+  parent?: Item
 }
