@@ -175,4 +175,8 @@ export class Item {
   @ManyToOne(() => Item, { nullable: true })
   @JoinColumn({ name: 'parent_id' })
   parent?: Item
+
+  @Column({ name: 'is_verified', type: 'boolean', default: true })
+  @Field(() => Boolean)
+  isVerified: boolean
 }

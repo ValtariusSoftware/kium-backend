@@ -73,6 +73,7 @@ type Item {
   isPurchasable: Boolean!
   isIngredient: Boolean!
   parentId: ID
+  isVerified: Boolean!
   canProduceQuantity: Float!
   totalAvailableStock: Float!
   hasOperationalHistory: Boolean!
@@ -340,6 +341,7 @@ type Mutation {
   removeItemsBulk(ids: [ID!]!): Boolean!
   updateItemsBulk(inputs: [BulkUpdateItemInput!]!): [Item!]!
   changeItemStructure(input: UpdateItemInput!): Item!
+  verifyItemStructure(id: ID!): Item!
 
   """
   Registra un movimiento de stock (Compra, Venta, Ajuste, Producción) y actualiza el stock total del Item.
