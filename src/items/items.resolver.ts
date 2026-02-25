@@ -200,7 +200,7 @@ export class ItemsResolver {
         user.id,
         item.id,
       )
-    console.log(`[DEBUG] Item: ${item.name}, HasHistory: ${hasHistory}`) // Agregá este log para ver qué pasa en consola
+    // console.log(`[DEBUG] Item: ${item.name}, HasHistory: ${hasHistory}`) // Agregá este log para ver qué pasa en consola
     return hasHistory
   }
 
@@ -211,5 +211,13 @@ export class ItemsResolver {
     @CurrentUser() user: User, // Usamos el decorador directamente
   ): Promise<Item> {
     return this.itemsService.changeItemStructure(user.id, input)
+  }
+
+  @Mutation(() => Item, { name: 'verifyItemStructure' })
+  async verifyItemStructure(
+    @Args('id', { type: () => ID }) id: string,
+    @CurrentUser() user: User,
+  ): Promise<Item> {
+    return this.itemsService.verifyItem(user.id, id)
   }
 }

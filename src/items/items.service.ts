@@ -746,6 +746,7 @@ export class ItemsService {
         id: undefined,
         stock: 0,
         parentId: currentParentId,
+        isVerified: false,
         createdAt: undefined,
         updatedAt: undefined,
         deletedAt: undefined,
@@ -775,7 +776,10 @@ export class ItemsService {
         await queryRunner.manager
           .createQueryBuilder()
           .update(RecipeIngredient)
-          .set({ ingredientItemId: savedItem.id })
+          .set({
+            ingredientItemId: savedItem.id,
+            quantity: 0, // 🚩 CAMBIO: Ponemos 0 para que la receta quede "inválida"
+          })
           .where('ingredientItemId = :oldId', { oldId: oldItem.id })
           .execute()
       }
@@ -784,7 +788,10 @@ export class ItemsService {
         await queryRunner.manager
           .createQueryBuilder()
           .update(Recipe)
-          .set({ finalProductId: savedItem.id })
+          .set({
+            finalProductId: savedItem.id,
+            // Opcional: Si tienes un campo isDraft o isVerified en Recipe, ponlo en false.
+          })
           .where('finalProductId = :oldId', { oldId: oldItem.id })
           .execute()
       }
@@ -798,5 +805,18 @@ export class ItemsService {
     } finally {
       await queryRunner.release()
     }
+  }
+
+  async verifyItem(userId: string, id: string): Promise<Item> {
+    const item = await this.itemsRepository.findOne({
+      where: { id, userId },
+    })
+
+    if (!item) {
+      throw new NotFoundException(`Item con ID ${id} no encontrado`)
+    }
+
+    item.isVerified = true
+    return this.itemsRepository.save(item)
   }
 }
