@@ -17,10 +17,10 @@ import {
 } from './dto/financial-report.output'
 import { ReportGroupBy } from './enums/report-group-by.enum'
 import { ItemsService } from 'src/items/items.service'
-import { GraphQLError } from 'graphql'
 import { AdjustStockInput } from './dto/adjust-stock.input'
 import { RecipesService } from 'src/recipes/recipes.service'
 import { PaginationInput } from 'src/common/dto/pagination.input'
+import { ItemErrorCode } from 'src/items/enums/item-error-code.enum'
 
 @Injectable()
 export class InventoryTransactionsService {
@@ -60,9 +60,7 @@ export class InventoryTransactionsService {
       })
 
       if (!item) {
-        throw new NotFoundException(
-          `Item con ID ${input.itemId} no encontrado.`,
-        )
+        throw new BadRequestException(ItemErrorCode.ITEM_NOT_FOUND)
       }
 
       // --- 0. NORMALIZACIÓN DE CANTIDAD ---
@@ -92,16 +90,17 @@ export class InventoryTransactionsService {
         const potentialStock = Number(item.stock) + finalQuantity
 
         if (potentialStock < 0) {
-          throw new GraphQLError(
-            `Stock insuficiente para ${item.name}. Disponible: ${item.stock}`,
-            {
-              extensions: {
-                code: 'INSUFFICIENT_STOCK',
-                httpStatus: 400,
-                available: item.stock,
-              },
-            },
-          )
+          // throw new GraphQLError(
+          //   `Stock insuficiente para ${item.name}. Disponible: ${item.stock}`,
+          //   {
+          //     extensions: {
+          //       code: 'INSUFFICIENT_STOCK',
+          //       httpStatus: 400,
+          //       available: item.stock,
+          //     },
+          //   },
+          // )
+          throw new BadRequestException(ItemErrorCode.INSUFFICIENT_STOCK)
         }
       }
 
@@ -357,9 +356,10 @@ export class InventoryTransactionsService {
   ): Promise<InventoryTransaction[]> {
     // 🛡️ VALIDACIÓN DE NEGOCIO: Antes de abrir la transacción
     if (inputs.length > 50) {
-      throw new BadRequestException(
-        `El lote es demasiado grande. Máximo 50 movimientos, recibidos: ${inputs.length}`,
-      )
+      // throw new BadRequestException(
+      //   `El lote es demasiado grande. Máximo 50 movimientos, recibidos: ${inputs.length}`,
+      // )
+      throw new BadRequestException(ItemErrorCode.BATCH_LIMIT_EXCEEDED)
     }
     const runner = this.dataSource.createQueryRunner()
     await runner.connect()

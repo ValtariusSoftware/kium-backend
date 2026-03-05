@@ -88,6 +88,15 @@ export class Item {
   @Field(() => BaseUnit)
   baseUnit: BaseUnit
 
+  @Column({
+    type: 'enum',
+    enum: BaseUnit,
+    name: 'purchase_unit',
+    nullable: true, // Lo ponemos nullable por los ítems ya existentes
+  })
+  @Field(() => BaseUnit, { nullable: true })
+  purchaseUnit: BaseUnit | null
+
   @Column('decimal', {
     name: 'conversion_to_base_qty',
     precision: 12,

@@ -12,14 +12,6 @@ export class UpdateItemInput {
   @IsOptional()
   name?: string
 
-  @Field(() => BaseUnit, { nullable: true })
-  @IsOptional()
-  baseUnit?: BaseUnit
-
-  @Field(() => Float, { nullable: true })
-  @IsOptional()
-  conversionToBaseQty?: number
-
   @Field(() => Float, { nullable: true })
   @IsOptional()
   minStockAlert?: number
@@ -48,12 +40,6 @@ export class BulkUpdateItemInput {
   @Field({ nullable: true })
   name?: string
 
-  // @Field(() => BaseUnit, { nullable: true })
-  // baseUnit?: BaseUnit
-
-  // @Field(() => Float, { nullable: true })
-  // conversionToBaseQty?: number
-
   @Field(() => Float, { nullable: true })
   minStockAlert?: number
 
@@ -65,4 +51,20 @@ export class BulkUpdateItemInput {
 
   @Field({ nullable: true })
   sku?: string
+}
+
+@InputType()
+export class ReconfigureItemInput {
+  @Field(() => ID)
+  @IsUUID()
+  id: string
+
+  @Field(() => BaseUnit) // Aquí suelen ser obligatorios porque definen la nueva estructura
+  baseUnit: BaseUnit
+
+  @Field(() => BaseUnit)
+  purchaseUnit: BaseUnit
+
+  @Field(() => Float)
+  conversionToBaseQty: number
 }
