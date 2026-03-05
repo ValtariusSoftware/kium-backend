@@ -58,6 +58,7 @@ type Item {
   name: String!
   stock: Float!
   baseUnit: BaseUnit!
+  purchaseUnit: BaseUnit
   conversionToBaseQty: Float!
   minStockAlert: Float
   costPrice: Float
@@ -340,7 +341,7 @@ type Mutation {
   removeItem(id: ID!): Boolean!
   removeItemsBulk(ids: [ID!]!): Boolean!
   updateItemsBulk(inputs: [BulkUpdateItemInput!]!): [Item!]!
-  changeItemStructure(input: UpdateItemInput!): Item!
+  changeItemStructure(input: ReconfigureItemInput!): Item!
   verifyItemStructure(id: ID!): Item!
 
   """
@@ -405,8 +406,6 @@ input CreateItemInput {
 input UpdateItemInput {
   id: ID!
   name: String
-  baseUnit: BaseUnit
-  conversionToBaseQty: Float
   minStockAlert: Float
   salePrice: Float
   barcode: String
@@ -420,6 +419,13 @@ input BulkUpdateItemInput {
   salePrice: Float
   barcode: String
   sku: String
+}
+
+input ReconfigureItemInput {
+  id: ID!
+  baseUnit: BaseUnit!
+  purchaseUnit: BaseUnit!
+  conversionToBaseQty: Float!
 }
 
 input RegisterTransactionInput {

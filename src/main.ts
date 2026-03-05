@@ -48,9 +48,35 @@ Token leído de DataStore (Inicio): 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdW
 
 
 
-REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzcxODYxNDE1LCJleHAiOjE3NzI0NjYyMTV9.ia5cb3NyTi0smSm0sVtkd1YQV4-5dKnTaB1hzF361Yw
+REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzcyNTQ4NjAzLCJleHAiOjE3NzMxNTM0MDN9.IR1p1iDATUxAvuYvOXNMN0xqUZliaZ2u54gnojXC0X0
 
+{
+  "createItemInput": {
+    "name": "Cerveza Artesanal IPA 500ml",
+    "costPrice": 1200.50,
+    "salePrice": 2500.00,
+    "stock": 5.0,
+    "minStockAlert": 10.0,
+    "sku": "BEER-IPA-001",
+    "barcode": "7791234567890",
+    "baseUnit": "UNIDAD",
+    "conversionToBaseQty": 1.0
+  }
+}
 
+{
+  "createItemInput": {
+    "name": "Harina de Trigo 000 x 1kg",
+    "costPrice": 450.00,
+    "salePrice": 850.00,
+    "stock": 50.0,
+    "minStockAlert": 5.0,
+    "sku": "ALIM-HARI-002",
+    "barcode": "7790987654321",
+    "baseUnit": "KG",
+    "conversionToBaseQty": 1.0
+  }
+}
 
 Carga masiva para usuarios de mas de x productos, cual podria ser el limite? darles una pequeña prueba a usuarios free.
 Debatir la creacion del excel quizas en un solo excel se podria armar el producto final ingredientes y cantidades.

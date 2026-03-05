@@ -5,6 +5,9 @@ import {
   Inject,
   forwardRef,
   ConflictException,
+  InternalServerErrorException,
+  HttpException,
+  BadRequestException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, DataSource, In } from 'typeorm'
@@ -19,7 +22,11 @@ import { RecipesService } from 'src/recipes/recipes.service'
 import { InventoryTransactionsService } from 'src/inventory-transactions/inventory-transactions.service'
 import { TransactionType } from 'src/inventory-transactions/enums/transaction-type.enum'
 import { ItemsFilterInput, StockStatusFilter } from './dto/items-filter.input'
-import { BulkUpdateItemInput, UpdateItemInput } from './dto/update-item.input'
+import {
+  BulkUpdateItemInput,
+  ReconfigureItemInput,
+  UpdateItemInput,
+} from './dto/update-item.input'
 import { PaginatedItems } from './types/paginated-items.type'
 import { PaginationInput } from 'src/common/dto/pagination.input'
 import { ItemErrorCode } from './enums/item-error-code.enum'
@@ -680,7 +687,7 @@ export class ItemsService {
    */
   async changeItemStructure(
     userId: string,
-    input: UpdateItemInput,
+    input: ReconfigureItemInput,
   ): Promise<Item> {
     const queryRunner = this.dataSource.createQueryRunner()
     await queryRunner.connect()
@@ -690,6 +697,12 @@ export class ItemsService {
       const oldItem = await queryRunner.manager.findOne(Item, {
         where: { id: input.id, userId },
       })
+
+      if (input.conversionToBaseQty <= 0) {
+        // Usamos un código que ya exista o uno genérico de "Fallo de validación"
+        throw new BadRequestException(ItemErrorCode.DUPLICATE_ENTRY)
+        // O mejor, creamos uno para "ERROR DE DATOS" y lo reusamos en toda la app.
+      }
 
       if (!oldItem) throw new NotFoundException(ItemErrorCode.ITEM_NOT_FOUND)
 
@@ -701,9 +714,20 @@ export class ItemsService {
 
       // CASO A: Sin historial operativo real -> Update directo
       if (!hasHistory) {
-        const updated = await this.update(userId, input)
+        await queryRunner.manager.update(
+          Item,
+          { id: input.id, userId },
+          {
+            baseUnit: input.baseUnit,
+            purchaseUnit: input.purchaseUnit,
+            conversionToBaseQty: input.conversionToBaseQty,
+          },
+        )
+        const updated = await queryRunner.manager.findOne(Item, {
+          where: { id: input.id },
+        })
         await queryRunner.commitTransaction()
-        return updated
+        return updated!
       }
 
       // CASO B: Con historial -> Clonación (Versioning)
@@ -801,7 +825,17 @@ export class ItemsService {
     } catch (err) {
       await queryRunner.rollbackTransaction()
       this.handleDuplicateError(err)
-      throw err
+
+      // 1. Si el error ya es una excepción de Nest (como el NotFound o BadRequest que lanzamos arriba)
+      // lo dejamos pasar tal cual para que el Filter no lo rompa.
+      if (err instanceof HttpException) {
+        throw err
+      }
+
+      // 2. Errores de Query (Database) o errores de código no controlados
+      // Aquí sí mandamos el genérico porque algo "explotó" en el servidor.
+      console.error('Error en Reconfiguration:', err) // Log para vos en el server
+      throw new InternalServerErrorException(ItemErrorCode.INTERNAL_ERROR)
     } finally {
       await queryRunner.release()
     }

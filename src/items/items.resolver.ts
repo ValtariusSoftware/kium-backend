@@ -15,7 +15,11 @@ import { BulkItemResponse, CreateItemInput } from './dto/create-item.dto'
 import { User } from '../users/entities/user.entity'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { ItemsFilterInput } from './dto/items-filter.input'
-import { BulkUpdateItemInput, UpdateItemInput } from './dto/update-item.input'
+import {
+  BulkUpdateItemInput,
+  ReconfigureItemInput,
+  UpdateItemInput,
+} from './dto/update-item.input'
 import { PaginatedItems } from './types/paginated-items.type'
 import { PaginationInput } from 'src/common/dto/pagination.input'
 import { RecipesLoader } from 'src/recipes/recipes.loader'
@@ -207,7 +211,7 @@ export class ItemsResolver {
   // Mutation para cambiar unidad base/factor o clonar
   @Mutation(() => Item)
   async changeItemStructure(
-    @Args('input') input: UpdateItemInput,
+    @Args('input') input: ReconfigureItemInput,
     @CurrentUser() user: User, // Usamos el decorador directamente
   ): Promise<Item> {
     return this.itemsService.changeItemStructure(user.id, input)
