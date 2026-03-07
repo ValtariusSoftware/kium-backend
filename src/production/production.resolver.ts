@@ -34,14 +34,22 @@ export class ProductionResolver {
 
   @Mutation(() => [Item], {
     name: 'produceItemsBatch',
-    description: 'Produce múltiples recetas en una sola transacción atómica.',
+    description:
+      'Produce múltiples recetas, retornando el listado de ítems exitosos.',
   })
   async produceItemsBatch(
     @Args({ name: 'inputs', type: () => [ProduceItemInput] })
     inputs: ProduceItemInput[],
     @CurrentUser() user: User,
   ): Promise<Item[]> {
-    return this.productionService.produceItemsBatch(user.id, inputs)
+    // Llamamos al servicio, que procesa todo y retorna BulkItemResponse
+    const result = await this.productionService.produceItemsBatch(
+      user.id,
+      inputs,
+    )
+
+    // Retornamos solo el array de éxitos que el frontend espera
+    return result.created
   }
 
   @Query(() => BatchSimulationResponse, {

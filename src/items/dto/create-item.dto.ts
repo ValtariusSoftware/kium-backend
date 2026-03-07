@@ -81,6 +81,10 @@ export class BulkItemError {
 
   @Field()
   error: string // El mensaje de error amigable (ej: "SKU duplicado")
+
+  // Agregamos este campo opcional
+  @Field(() => [String], { nullable: true })
+  details?: string[]
 }
 
 @ObjectType()

@@ -164,6 +164,7 @@ type BulkItemError {
   row: Int!
   name: String!
   error: String!
+  details: [String!]
 }
 
 type BulkItemResponse {
@@ -249,7 +250,7 @@ type IngredientConsumption {
 
 type SimulatedItem {
   itemId: String!
-  itemName: String!
+  itemName: String
   requestedQuantity: Float!
   ingredientsUsage: [IngredientConsumption!]!
   hasInsufficientStock: Boolean!
@@ -318,7 +319,7 @@ enum ReportGroupBy {
 }
 
 input ProduceItemInput {
-  recipeId: ID!
+  itemId: ID!
   quantityToProduce: Float!
 }
 
@@ -365,7 +366,7 @@ type Mutation {
   """
   produceItem(produceItemInput: ProduceItemInput!): Item!
 
-  """Produce múltiples recetas en una sola transacción atómica."""
+  """Produce múltiples recetas, retornando el listado de ítems exitosos."""
   produceItemsBatch(inputs: [ProduceItemInput!]!): [Item!]!
   createSale(createSaleInput: CreateSaleInput!): Sale!
   voidSale(saleId: String!): Sale!
