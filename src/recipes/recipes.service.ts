@@ -324,7 +324,7 @@ export class RecipesService {
   ): Promise<Recipe | null> {
     const recipe = await this.recipesRepository.findOne({
       where: { finalProductId, userId },
-      relations: ['ingredients', 'ingredients.ingredientItem'], // Cargar ingredientes y los detalles del ítem ingrediente
+      relations: ['ingredients', 'ingredients.ingredientItem', 'finalProduct'], // Cargar ingredientes y los detalles del ítem ingrediente
     })
 
     return recipe

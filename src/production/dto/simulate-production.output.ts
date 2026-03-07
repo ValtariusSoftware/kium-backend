@@ -17,8 +17,8 @@ export class SimulatedItem {
   @Field()
   itemId: string
 
-  @Field()
-  itemName: string
+  @Field(() => String, { nullable: true })
+  itemName: string | null
 
   @Field(() => Float)
   requestedQuantity: number

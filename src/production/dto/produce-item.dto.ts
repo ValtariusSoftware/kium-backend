@@ -7,7 +7,8 @@ import { IsUUID, IsNumber, Min } from 'class-validator'
 export class ProduceItemInput {
   @Field(() => ID)
   @IsUUID()
-  recipeId: string
+  // recipeId: string
+  itemId: string
 
   @Field(() => Float)
   @IsNumber()
