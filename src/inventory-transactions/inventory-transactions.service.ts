@@ -21,6 +21,7 @@ import { AdjustStockInput } from './dto/adjust-stock.input'
 import { RecipesService } from 'src/recipes/recipes.service'
 import { PaginationInput } from 'src/common/dto/pagination.input'
 import { ItemErrorCode } from 'src/items/enums/item-error-code.enum'
+import { UserStatsMetadata } from './dto/user-stats-metadata.output'
 
 @Injectable()
 export class InventoryTransactionsService {
@@ -196,80 +197,137 @@ export class InventoryTransactionsService {
     return { transactions, total }
   }
 
-  // async getFinancialReport(
-  //   userId: string,
-  //   startDate: Date,
-  //   endDate: Date,
-  //   groupBy: ReportGroupBy,
-  // ): Promise<FinancialReportResponse> {
-  //   const dateTrunc = groupBy === ReportGroupBy.DAY ? 'day' : 'month'
-  //   const format = groupBy === ReportGroupBy.DAY ? 'YYYY-MM-DD' : 'YYYY-MM'
-
-  //   const results = await this.transactionRepository
-  //     .createQueryBuilder('t')
-  //     .select(
-  //       `TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`,
-  //       'label',
-  //     )
-  //     .addSelect(
-  //       `SUM(
-  //         CASE
-  //           WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot
-  //           WHEN t.type = 'RETURN_FROM_SALE' THEN -ABS(t.quantity) * t.salePriceSnapshot
-  //           ELSE 0
-  //         END
-  //       )`,
-  //       'revenue',
-  //     )
-  //     .addSelect(
-  //       `SUM(
-  //         CASE
-  //           WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unitCostSnapshot
-  //           WHEN t.type = 'RETURN_FROM_SALE' THEN -ABS(t.quantity) * t.unitCostSnapshot
-  //           ELSE 0
-  //         END
-  //       )`,
-  //       'cost',
-  //     )
-  //     .addSelect(
-  //       `SUM(CASE WHEN t.type IN ('ADJUSTMENT_OUT', 'CONSUMPTION') THEN ABS(t.quantity) * t.unitCostSnapshot ELSE 0 END)`,
-  //       'losses',
-  //     )
-  //     .where('t.userId = :userId', { userId })
-  //     .andWhere('t.createdAt BETWEEN :startDate AND :endDate', {
-  //       startDate,
-  //       endDate,
-  //     })
-  //     .groupBy(`TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`)
-  //     .orderBy('label', 'ASC')
-  //     .getRawMany()
-
-  //   const data: FinancialDataPoint[] = results.map((r) => ({
-  //     label: r.label,
-  //     revenue: Number(r.revenue || 0),
-  //     cost: Number(r.cost || 0),
-  //     losses: Number(r.losses || 0),
-  //     netProfit:
-  //       Math.round(
-  //         (Number(r.revenue || 0) -
-  //           Number(r.cost || 0) -
-  //           Number(r.losses || 0)) *
-  //           100,
-  //       ) / 100,
-  //   }))
-
-  //   const totalNetProfit =
-  //     Math.round(data.reduce((sum, p) => sum + p.netProfit, 0) * 100) / 100
-
-  //   return { data, totalNetProfit }
-  // }
-
   /**
    * Genera un reporte financiero consolidado agrupando transacciones por tiempo.
    * Utiliza un JOIN con la tabla de ítems para unificar el historial de productos
    * que han sido clonados (versionados), permitiendo que las ventas de un ítem "hijo"
    * computen junto a las de su "padre" original mediante el parent_id.
    */
+  // 2. Método auxiliar para generar datos de prueba
+  private generateMockData(
+    startDate: Date,
+    endDate: Date,
+  ): FinancialReportResponse {
+    const fullHistory = [
+      {
+        label: '2025-02',
+        revenue: 100000,
+        cost: 20000,
+        losses: 10000,
+        netProfit: 70000,
+      },
+      {
+        label: '2025-03',
+        revenue: 135000,
+        cost: 17328,
+        losses: 37352.2,
+        netProfit: 80319.8,
+      },
+      {
+        label: '2025-04',
+        revenue: 100000,
+        cost: 20000,
+        losses: 10000,
+        netProfit: 70000,
+      },
+      {
+        label: '2025-05',
+        revenue: 120000,
+        cost: 25000,
+        losses: 5000,
+        netProfit: 90000,
+      },
+      {
+        label: '2025-06',
+        revenue: 100000,
+        cost: 20000,
+        losses: 10000,
+        netProfit: 70000,
+      },
+      {
+        label: '2025-07',
+        revenue: 135000,
+        cost: 17328,
+        losses: 37352.2,
+        netProfit: 80319.8,
+      },
+      {
+        label: '2025-08',
+        revenue: 100000,
+        cost: 20000,
+        losses: 10000,
+        netProfit: 70000,
+      },
+      {
+        label: '2025-09',
+        revenue: 120000,
+        cost: 25000,
+        losses: 5000,
+        netProfit: 90000,
+      },
+      {
+        label: '2025-10',
+        revenue: 100000,
+        cost: 20000,
+        losses: 10000,
+        netProfit: 70000,
+      },
+      {
+        label: '2025-11',
+        revenue: 120000,
+        cost: 25000,
+        losses: 5000,
+        netProfit: 90000,
+      },
+      {
+        label: '2025-12',
+        revenue: 0,
+        cost: 0,
+        losses: 0,
+        netProfit: 0,
+      },
+      {
+        label: '2026-01',
+        revenue: 0,
+        cost: 0,
+        losses: 0,
+        netProfit: 0,
+      },
+      {
+        label: '2026-02',
+        revenue: 0,
+        cost: 0,
+        losses: 0,
+        netProfit: 0,
+      },
+      {
+        label: '2026-03',
+        revenue: 135000,
+        cost: 17328,
+        losses: 37352.2,
+        netProfit: 80319.8,
+      },
+    ]
+
+    const data = fullHistory.filter(
+      (h) =>
+        h.label >= startDate.toISOString().slice(0, 7) &&
+        h.label <= endDate.toISOString().slice(0, 7),
+    )
+
+    const totalNet = data.reduce((sum, p) => sum + p.netProfit, 0)
+    const divisor = Math.min(data.length, 6)
+    const avgProfit = divisor > 0 ? totalNet / divisor : 0
+
+    return {
+      data,
+      avgProfit: Math.round(avgProfit * 100) / 100,
+      range: {
+        start: startDate.toISOString().slice(0, 7),
+        end: endDate.toISOString().slice(0, 7),
+      },
+    }
+  }
   async getFinancialReport(
     userId: string,
     startDate: Date,
@@ -278,6 +336,12 @@ export class InventoryTransactionsService {
   ): Promise<FinancialReportResponse> {
     const dateTrunc = groupBy === ReportGroupBy.DAY ? 'day' : 'month'
     const format = groupBy === ReportGroupBy.DAY ? 'YYYY-MM-DD' : 'YYYY-MM'
+    // console.log('DEBUG: Rango recibido -> Start:', startDate, 'End:', endDate)
+    // 🚨 FORZAR MOCK DATA
+    const useMock = true // Cambia a false cuando quieras volver a la DB real
+    if (useMock) {
+      return this.generateMockData(startDate, endDate)
+    }
 
     const results = await this.transactionRepository
       .createQueryBuilder('t')
@@ -288,38 +352,36 @@ export class InventoryTransactionsService {
         'label',
       )
       .addSelect(
-        `SUM(
-          CASE 
-            WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot 
-            WHEN t.type = 'RETURN_FROM_SALE' THEN -ABS(t.quantity) * t.salePriceSnapshot 
-            ELSE 0 
-          END
-        )`,
+        `SUM(CASE 
+        WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot 
+        -- Excluimos RETURN_FROM_SALE si el doc empieza con VOID
+        WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.salePriceSnapshot 
+        ELSE 0 END)`,
         'revenue',
       )
+
       .addSelect(
-        `SUM(
-          CASE 
-            WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unitCostSnapshot 
-            WHEN t.type = 'RETURN_FROM_SALE' THEN -ABS(t.quantity) * t.unitCostSnapshot 
-            ELSE 0 
-          END
-        )`,
+        `SUM(CASE 
+        WHEN t.type = 'SALE' THEN ABS(t.quantity) * unit_cost_snapshot 
+        -- Excluimos RETURN_FROM_SALE si el doc empieza con VOID
+        WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * unit_cost_snapshot 
+        WHEN t.type IN ('CONSUMPTION', 'PRODUCTION_OUT') THEN ABS(t.quantity) * unit_cost_snapshot 
+        ELSE 0 END)`,
         'cost',
       )
+
       .addSelect(
-        `SUM(
-          CASE 
-            WHEN t.type IN ('ADJUSTMENT_OUT', 'CONSUMPTION') THEN ABS(t.quantity) * t.unitCostSnapshot 
-            ELSE 0 
-          END
-        )`,
+        `SUM(CASE 
+        WHEN t.type = 'ADJUSTMENT_OUT' THEN ABS(t.quantity) * "unit_cost_snapshot"
+        ELSE 0 END)`,
         'losses',
       )
       .where('t.userId = :userId', { userId })
-      .andWhere('t.createdAt BETWEEN :startDate AND :endDate', {
-        startDate,
-        endDate,
+      .leftJoin('t.sale', 'sale')
+      .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
+      .andWhere('t.createdAt >= :startDate', { startDate })
+      .andWhere('t.createdAt < :nextDay', {
+        nextDay: new Date(new Date(endDate).getTime() + 86400000), // Suma 24 horas (en milisegundos)
       })
       // Agrupamos por la etiqueta de tiempo
       .groupBy(`TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`)
@@ -340,10 +402,51 @@ export class InventoryTransactionsService {
         ) / 100,
     }))
 
-    const totalNetProfit =
-      Math.round(data.reduce((sum, p) => sum + p.netProfit, 0) * 100) / 100
+    // 1. Cálculos de Totales
+    const totalNet = data.reduce((sum, p) => sum + p.netProfit, 0)
 
-    return { data, totalNetProfit }
+    const divisor = Math.min(data.length, 6)
+    const avgProfit = divisor > 0 ? totalNet / divisor : 0
+
+    console.log('DEBUG: Largo del array data ->', data.length)
+    console.log('DEBUG: Divisor final ->', divisor)
+
+    return {
+      data,
+      avgProfit: Math.round(avgProfit * 100) / 100,
+      range: {
+        start: startDate.toISOString().slice(0, 7),
+        end: endDate.toISOString().slice(0, 7),
+      },
+    }
+  }
+  /**
+   * Verifica la primer transaccion a la db.
+   *
+   */
+  async getUserStatsMetadata(userId: string): Promise<UserStatsMetadata> {
+    const useMock = true
+
+    if (useMock) {
+      return {
+        firstMonth: '2025-02', // Inicio de tu fullHistory mockeado
+        lastMonth: '2026-03', // Fin de tu fullHistory mockeado
+      }
+    }
+    const result = await this.transactionRepository
+      .createQueryBuilder('t')
+      .select("TO_CHAR(MIN(t.createdAt), 'YYYY-MM')", 'firstMonth')
+      .addSelect("TO_CHAR(MAX(t.createdAt), 'YYYY-MM')", 'lastMonth')
+      .where('t.userId = :userId', { userId })
+      .getRawOne()
+
+    // Si no hay transacciones, usamos el mes actual como fallback
+    const now = new Date().toISOString().slice(0, 7)
+
+    return {
+      firstMonth: result?.firstMonth || now,
+      lastMonth: result?.lastMonth || now,
+    }
   }
 
   /**
@@ -450,4 +553,27 @@ export class InventoryTransactionsService {
     })
     return count > 0
   }
+
+  /**
+   * Obtiene los últimos movimientos de stock relevantes para el Hub de operaciones.
+   * Filtra únicamente por Cargas (Compras/Inicial) y Producción.
+   */
+  // async getRecentOperationalMovements(
+  //   userId: string,
+  //   limit: number = 5,
+  // ): Promise<InventoryTransaction[]> {
+  //   return await this.transactionRepository.find({
+  //     where: {
+  //       userId,
+  //       type: In([
+  //         TransactionType.PURCHASE,
+  //         TransactionType.INITIAL_INVENTORY,
+  //         TransactionType.PRODUCTION_IN, // Asegúrate de tener este tipo en tu enum
+  //       ]),
+  //     },
+  //     relations: ['item'], // Necesitamos el ítem para mostrar el nombre
+  //     order: { createdAt: 'DESC' },
+  //     take: limit,
+  //   })
+  // }
 }

@@ -22,6 +22,7 @@ import { AdjustStockInput } from './dto/adjust-stock.input'
 import { PaginationInput } from 'src/common/dto/pagination.input'
 import { PaginatedTransactions } from './dto/paginated-transactions.output'
 import { ItemsLoader } from 'src/items/items.loader'
+import { UserStatsMetadata } from './dto/user-stats-metadata.output'
 
 @Resolver(() => InventoryTransaction)
 export class InventoryTransactionsResolver {
@@ -75,6 +76,12 @@ export class InventoryTransactionsResolver {
       endDate,
       groupBy,
     )
+  }
+  @Query(() => UserStatsMetadata, { name: 'userStatsMetadata' })
+  async getUserStatsMetadata(
+    @CurrentUser() user: User,
+  ): Promise<UserStatsMetadata> {
+    return this.inventoryTransactionsService.getUserStatsMetadata(user.id)
   }
 
   @ResolveField(() => Item, { name: 'item' })

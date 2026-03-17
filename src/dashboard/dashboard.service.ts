@@ -22,6 +22,37 @@ export class DashboardService {
     @InjectRepository(Item) private itemRepo: Repository<Item>,
   ) {}
 
+  private calculateFinancials(transactions: InventoryTransaction[]): {
+    revenue: number
+    cost: number
+    losses: number
+  } {
+    let revenue = 0,
+      cost = 0,
+      losses = 0
+
+    transactions.forEach((t) => {
+      const qty = Math.abs(Number(t.quantity))
+      const unitCost = Number(t.unitCostSnapshot)
+      const salePrice = Number(t.salePriceSnapshot)
+
+      if (t.type === TransactionType.SALE) {
+        revenue += qty * salePrice
+        cost += qty * unitCost
+      } else if (t.type === TransactionType.RETURN_FROM_SALE) {
+        revenue -= qty * salePrice
+        cost -= qty * unitCost
+      } else if (
+        t.type === TransactionType.CONSUMPTION ||
+        t.type === TransactionType.PRODUCTION_OUT
+      ) {
+        cost += qty * unitCost // Ambos son costos operativos
+      } else if (t.type === TransactionType.ADJUSTMENT_OUT) {
+        losses += qty * unitCost
+      }
+    })
+    return { revenue, cost, losses }
+  }
   /**
    * Resumen para la pantalla principal del Dashboard.
    * Calcula ganancias, pérdidas, stock bajo, tendencias y rankings.
@@ -43,39 +74,28 @@ export class DashboardService {
     const endOfYesterday = new Date(startOfToday)
     endOfYesterday.setMilliseconds(-1)
 
-    // 1. VENTAS Y GANANCIAS DEL MES (Solo no anuladas)
-    const salesMonth = await this.saleRepo.find({
+    // 1. TRAER TODAS LAS TRANSACCIONES DEL MES
+    const allTransactions = await this.transRepo.find({
       where: {
         userId,
         createdAt: Between(startOfMonth, now),
-        isVoided: false,
       },
-      relations: ['items'],
+      relations: ['sale'],
     })
 
-    let totalRevenueProfit = 0
-    salesMonth.forEach((sale) => {
-      sale.items?.forEach((trans) => {
-        const profit =
-          (Number(trans.salePriceSnapshot) - Number(trans.unitCostSnapshot)) *
-          Math.abs(Number(trans.quantity))
-        totalRevenueProfit += profit
-      })
-    })
+    // 2. FILTRAR ANULADAS
+    const validTransactions = allTransactions.filter(
+      (t) => !t.sale || t.sale.isVoided === false,
+    )
 
-    // 2. PÉRDIDAS (Ajustes de salida)
-    const lossesTransactions = await this.transRepo.find({
-      where: {
-        userId,
-        type: TransactionType.ADJUSTMENT_OUT,
-        createdAt: Between(startOfMonth, now),
-      },
-    })
+    // 3. CALCULAR FINANZAS
+    const { revenue, cost, losses } =
+      this.calculateFinancials(validTransactions)
 
-    let monthlyLosses = 0
-    lossesTransactions.forEach((t) => {
-      monthlyLosses += Math.abs(Number(t.quantity)) * Number(t.unitCostSnapshot)
-    })
+    // 4. CONTAR VENTAS (Solo las que no son anuladas)
+    const totalSalesMonth = validTransactions.filter(
+      (t) => t.type === TransactionType.SALE,
+    ).length
 
     // 3. BAJO STOCK (Lógica de activación aplicada)
     const lowStockItems = await this.itemRepo
@@ -160,8 +180,8 @@ export class DashboardService {
     })
 
     return {
-      monthlyNetProfit: totalRevenueProfit - monthlyLosses,
-      monthlyLosses, // Se usa aquí (corrige error de scope)
+      monthlyNetProfit: Math.round((revenue - cost - losses) * 100) / 100,
+      monthlyLosses: Math.round(losses * 100) / 100,
       lowStockCount: lowStockItems.length,
       lowStockPreview: lowStockItems.slice(0, 3).map((i) => ({
         id: i.id,
@@ -175,7 +195,7 @@ export class DashboardService {
         quantitySold: parseFloat(p.total),
       })),
       leastSellingProducts,
-      totalSalesMonth: salesMonth.length,
+      totalSalesMonth: totalSalesMonth,
       salesTrend: countToday - countYesterday,
     }
   }
