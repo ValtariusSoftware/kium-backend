@@ -190,9 +190,15 @@ type FinancialDataPoint {
   netProfit: Float!
 }
 
+type RangeDTO {
+  start: String!
+  end: String!
+}
+
 type FinancialReportResponse {
   data: [FinancialDataPoint!]!
-  totalNetProfit: Float!
+  avgProfit: Float!
+  range: RangeDTO!
 }
 
 type TransactionHistoryItem {
@@ -209,6 +215,11 @@ type TransactionHistoryItem {
 type PaginatedTransactions {
   transactions: [TransactionHistoryItem!]!
   total: Int!
+}
+
+type UserStatsMetadata {
+  firstMonth: String!
+  lastMonth: String!
 }
 
 type PaginatedSales {
@@ -280,6 +291,7 @@ type Query {
   getItemByBarcode(barcode: String!): Item
   itemTransactionHistory(itemId: ID!, pagination: PaginationInput): PaginatedTransactions!
   financialReport(startDate: DateTime!, endDate: DateTime!, groupBy: ReportGroupBy!): FinancialReportResponse!
+  userStatsMetadata: UserStatsMetadata!
   me: User
   users: [User!]!
 

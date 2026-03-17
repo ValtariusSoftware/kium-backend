@@ -24,11 +24,16 @@ export class FinancialDataPoint {
 }
 
 @ObjectType()
+export class RangeDTO {
+  @Field() start: string
+  @Field() end: string
+}
+
+@ObjectType()
 export class FinancialReportResponse {
   @Field(() => [FinancialDataPoint])
   data: FinancialDataPoint[]
 
-  @Field(() => Float)
-  @Transform(({ value }) => Number(value.toFixed(2)))
-  totalNetProfit: number
+  @Field(() => Float) avgProfit: number
+  @Field(() => RangeDTO) range: RangeDTO
 }
