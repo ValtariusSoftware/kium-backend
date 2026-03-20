@@ -30,4 +30,10 @@ export class CreateSaleInput {
   @Field(() => [SaleItemInput])
   @IsArray()
   items: SaleItemInput[]
+
+  @Field(() => String, { defaultValue: 'CASH' })
+  paymentMethod: string
+
+  @Field({ nullable: true })
+  notes?: string
 }

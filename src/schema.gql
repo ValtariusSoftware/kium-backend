@@ -131,6 +131,9 @@ type Sale {
   createdAt: DateTime!
   items: [InventoryTransaction!]
   isVoided: Boolean!
+  paymentMethod: String!
+  notes: String
+  updatedAt: DateTime!
 }
 
 type InventoryTransaction {
@@ -303,11 +306,11 @@ type Query {
   getTopSellingDetailed(pagination: PaginationInput): PaginatedTopProducts!
   getLeastSellingDetailed(pagination: PaginationInput): PaginatedTopProducts!
   getLowStockDetailed(pagination: PaginationInput): PaginatedLowStock!
-  getMonthlySalesDetailed(pagination: PaginationInput): PaginatedSales!
+  getMonthlySalesDetailed(pagination: PaginationInput, filter: SalesFilterInput): PaginatedSales!
 }
 
 input PaginationInput {
-  limit: Int = 6
+  limit: Int = 50
   offset: Int = 0
 }
 
@@ -333,6 +336,11 @@ enum ReportGroupBy {
 input ProduceItemInput {
   itemId: ID!
   quantityToProduce: Float!
+}
+
+input SalesFilterInput {
+  paymentMethod: String
+  isVoided: Boolean
 }
 
 type Mutation {
@@ -466,6 +474,8 @@ input UpdateAccessLevelInput {
 
 input CreateSaleInput {
   items: [SaleItemInput!]!
+  paymentMethod: String! = "CASH"
+  notes: String
 }
 
 input SaleItemInput {
