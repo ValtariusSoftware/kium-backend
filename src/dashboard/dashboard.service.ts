@@ -12,6 +12,7 @@ import { PaginatedLowStock } from './dto/paginated-low-stock.output'
 import { PaginatedSales } from 'src/sales/dto/paginated-sales.output'
 import { PaginatedTopProducts } from './dto/paginated-top-products.output'
 import { GraphQLError } from 'graphql'
+import { SalesFilterInput } from './dto/sales-filter.input'
 
 @Injectable()
 export class DashboardService {
@@ -135,7 +136,7 @@ export class DashboardService {
       .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
       .groupBy('item.name')
       .orderBy('total', 'DESC')
-      .limit(3)
+      .limit(50)
       .getRawMany()
 
     // 5. TOP 3 MENOS VENDIDOS (Solo para PRO)
@@ -154,7 +155,7 @@ export class DashboardService {
         .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
         .groupBy('item.name')
         .orderBy('total', 'ASC')
-        .limit(3)
+        .limit(50)
         .getRawMany()
 
       leastSellingProducts = leastProductsRaw.map((p) => ({
@@ -355,9 +356,35 @@ export class DashboardService {
    * Filtra por usuario, ventas no anuladas y dentro del mes actual.
    * Retorna los datos paginados junto con el total para gestión de listas en la App.
    */
+  // async getMonthlySalesDetailed(
+  //   userId: string,
+  //   pagination: PaginationInput,
+  // ): Promise<PaginatedSales> {
+  //   const startOfMonth = new Date(
+  //     new Date().getFullYear(),
+  //     new Date().getMonth(),
+  //     1,
+  //   )
+
+  //   const [sales, total] = await this.saleRepo.findAndCount({
+  //     where: {
+  //       userId,
+  //       createdAt: Between(startOfMonth, new Date()),
+  //       isVoided: false,
+  //     },
+  //     relations: ['items'],
+  //     order: { createdAt: 'DESC' },
+  //     take: pagination.limit,
+  //     skip: pagination.offset,
+  //   })
+
+  //   // Importante: devolvemos la clave 'sales' para que coincida con tu DTO existente
+  //   return { sales, total }
+  // }
   async getMonthlySalesDetailed(
     userId: string,
     pagination: PaginationInput,
+    filters?: SalesFilterInput, // 👈 Nuevo parámetro
   ): Promise<PaginatedSales> {
     const startOfMonth = new Date(
       new Date().getFullYear(),
@@ -365,19 +392,28 @@ export class DashboardService {
       1,
     )
 
+    // Construcción dinámica del filtro
+    const whereCondition: any = {
+      userId,
+      createdAt: Between(startOfMonth, new Date()),
+    }
+
+    if (filters?.paymentMethod) {
+      whereCondition.paymentMethod = filters.paymentMethod
+    }
+
+    if (filters?.isVoided !== undefined) {
+      whereCondition.isVoided = filters.isVoided
+    }
+
     const [sales, total] = await this.saleRepo.findAndCount({
-      where: {
-        userId,
-        createdAt: Between(startOfMonth, new Date()),
-        isVoided: false,
-      },
-      relations: ['items'],
+      where: whereCondition,
+      relations: ['items', 'items.item'],
       order: { createdAt: 'DESC' },
       take: pagination.limit,
       skip: pagination.offset,
     })
 
-    // Importante: devolvemos la clave 'sales' para que coincida con tu DTO existente
     return { sales, total }
   }
 }

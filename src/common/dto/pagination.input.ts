@@ -1,10 +1,10 @@
 import { InputType, Field, Int } from '@nestjs/graphql'
-import { IsInt, IsOptional, Min } from 'class-validator'
+import { IsInt, IsOptional, Max, Min } from 'class-validator'
 
 @InputType()
 export class PaginationInput {
   // Definimos constantes estáticas para que sean accesibles desde cualquier lado
-  static readonly DEFAULT_LIMIT = 6
+  static readonly DEFAULT_LIMIT = 50
   static readonly DEFAULT_OFFSET = 0
 
   @Field(() => Int, {
@@ -13,6 +13,7 @@ export class PaginationInput {
   })
   @IsInt()
   @Min(1)
+  @Max(500) // 👈 Límite de seguridad para que nadie rompa la DB pidiendo 10.000
   @IsOptional()
   limit: number = PaginationInput.DEFAULT_LIMIT
 

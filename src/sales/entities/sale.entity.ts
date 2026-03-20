@@ -1,6 +1,6 @@
 // sales/entities/sale.entity.ts
 
-import { ObjectType, Field, ID, Float } from '@nestjs/graphql'
+import { ObjectType, Field, ID, Float, registerEnumType } from '@nestjs/graphql'
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -9,6 +9,7 @@ import {
   ManyToOne,
   OneToMany,
   JoinColumn,
+  UpdateDateColumn,
 } from 'typeorm'
 import { User } from '../../users/entities/user.entity'
 import { InventoryTransaction } from '../../inventory-transactions/entities/inventory-transaction.entity'
@@ -16,6 +17,16 @@ import { InventoryTransaction } from '../../inventory-transactions/entities/inve
 import { ColumnNumericTransformer } from 'src/common/transformers/numeric.transformer'
 
 const numericTransformer = new ColumnNumericTransformer()
+
+export enum PaymentMethod {
+  CASH = 'CASH',
+  TRANSFER = 'TRANSFER',
+  DEBIT = 'DEBIT',
+  CREDIT = 'CREDIT',
+  QR = 'QR',
+}
+
+registerEnumType(PaymentMethod, { name: 'PaymentMethod' })
 
 @ObjectType()
 @Entity({ name: 'sales', schema: 'stock_control' })
@@ -52,4 +63,21 @@ export class Sale {
   @Field(() => Boolean)
   @Column({ name: 'is_voided', type: 'boolean', default: false })
   isVoided: boolean
+
+  @Field(() => String)
+  @Column({
+    name: 'payment_method',
+    type: 'varchar',
+    length: 50,
+    default: PaymentMethod.CASH,
+  })
+  paymentMethod: string
+
+  @Field({ nullable: true })
+  @Column({ name: 'notes', type: 'text', nullable: true })
+  notes?: string
+
+  @Field()
+  @UpdateDateColumn({ name: 'updated_at' })
+  updatedAt: Date
 }

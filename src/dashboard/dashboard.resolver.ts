@@ -8,6 +8,7 @@ import { PaginationInput } from 'src/common/dto/pagination.input'
 import { PaginatedLowStock } from './dto/paginated-low-stock.output'
 import { PaginatedSales } from 'src/sales/dto/paginated-sales.output'
 import { PaginatedTopProducts } from './dto/paginated-top-products.output'
+import { SalesFilterInput } from './dto/sales-filter.input'
 
 @Resolver()
 export class DashboardResolver {
@@ -55,10 +56,12 @@ export class DashboardResolver {
   async getMonthlySalesDetailed(
     @CurrentUser() user: User,
     @Args('pagination', { nullable: true }) pagination?: PaginationInput,
+    @Args('filter', { nullable: true }) filter?: SalesFilterInput, // 👈 Nuevo argumento
   ): Promise<PaginatedSales> {
     return this.dashboardService.getMonthlySalesDetailed(
       user.id,
       pagination ?? new PaginationInput(),
+      filter,
     )
   }
 }
