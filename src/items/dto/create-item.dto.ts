@@ -42,22 +42,36 @@ export class CreateItemInput {
   ) // 👈 Precios a 2
   minStockAlert?: number
 
+  // @Field(() => Float, { nullable: true })
+  // @IsOptional()
+  // @IsNumber()
+  // @Min(0)
+  // @Transform(({ value }) =>
+  //   value ? Number(parseFloat(value).toFixed(2)) : value,
+  // )
+  // costPrice?: number
+
+  // @Field(() => Float, { nullable: true })
+  // @IsOptional()
+  // @IsNumber()
+  // @Min(0)
+  // @Transform(({ value }) =>
+  //   value ? Number(parseFloat(value).toFixed(2)) : value,
+  // )
+  // salePrice?: number
+
   @Field(() => Float, { nullable: true })
   @IsOptional()
   @IsNumber()
   @Min(0)
-  @Transform(({ value }) =>
-    value ? Number(parseFloat(value).toFixed(2)) : value,
-  )
+  @Transform(({ value }) => (value ? Math.round(value) : value)) // 👈 A centavos
   costPrice?: number
 
   @Field(() => Float, { nullable: true })
   @IsOptional()
   @IsNumber()
   @Min(0)
-  @Transform(({ value }) =>
-    value ? Number(parseFloat(value).toFixed(2)) : value,
-  )
+  @Transform(({ value }) => (value ? Math.round(value) : value)) // 👈 A centavos
   salePrice?: number
 
   @Field({ nullable: true })

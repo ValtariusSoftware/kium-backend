@@ -56,7 +56,6 @@ export class ProductionService {
     }
 
     try {
-      // const recipe = await this.recipesService.findOne(input.recipeId, userId)
       const recipe = await this.recipesService.findByFinalProductId(
         input.itemId,
         userId,
@@ -64,42 +63,43 @@ export class ProductionService {
       if (!recipe) throw new NotFoundException(ItemErrorCode.ITEM_NOT_FOUND)
 
       const factor = input.quantityToProduce / recipe.yieldQuantity
+      const missingIngredients: string[] = []
+      let totalProductionCost = 0 // Para calcular el nuevo costo del producto final
 
       // --- 1. VALIDACIÓN DE STOCK ---
-      const missingIngredients: string[] = []
-
       for (const ingredient of recipe.ingredients) {
-        const baseQtyToConsume = ingredient.quantityRequired * factor
         const stockQtyToConsume =
-          baseQtyToConsume / ingredient.ingredientItem.conversionToBaseQty
+          (ingredient.quantityRequired * factor) /
+          ingredient.ingredientItem.conversionToBaseQty
 
         const dbItem = await queryRunner.manager.findOne(Item, {
           where: { id: ingredient.ingredientItemId },
           lock: { mode: 'pessimistic_write' },
         })
 
-        const currentStock = Number(dbItem?.stock || 0)
-        if (currentStock < stockQtyToConsume) {
+        if (Number(dbItem?.stock || 0) < stockQtyToConsume) {
           missingIngredients.push(ingredient.ingredientItem.name)
         }
       }
 
-      // Si falta stock, lanzamos la excepción estructurada para el Filtro
       if (missingIngredients.length > 0) {
         throw new BadRequestException({
           message: ItemErrorCode.INSUFFICIENT_STOCK,
-          details: missingIngredients, // Android recibirá esto para mostrar qué falta
+          details: missingIngredients,
         })
       }
 
-      // --- 2. REGISTRO DE CONSUMO DE INGREDIENTES ---
+      // --- 2. CONSUMO DE INGREDIENTES Y CÁLCULO DE COSTO ---
       for (const ingredient of recipe.ingredients) {
-        const baseQtyToConsume = ingredient.quantityRequired * factor
         const stockQtyToConsume =
-          baseQtyToConsume / ingredient.ingredientItem.conversionToBaseQty
+          (ingredient.quantityRequired * factor) /
+          ingredient.ingredientItem.conversionToBaseQty
+
+        // Usamos el costo actual del ingrediente
         const ingredientUnitCost = Number(
           ingredient.ingredientItem.costPrice || 0,
         )
+        totalProductionCost += stockQtyToConsume * ingredientUnitCost
 
         await this.inventoryTransactionsService.registerMovement(
           userId,
@@ -108,7 +108,7 @@ export class ProductionService {
             type: TransactionType.CONSUMPTION,
             quantity: stockQtyToConsume,
             documentRef: `PROD-RECIPE-${recipe.id}`,
-            notes: `Consumo para producir ${input.quantityToProduce} unidades de ${recipe.finalProduct.name}.`,
+            notes: `Insumo para ${input.quantityToProduce} ${recipe.finalProduct.name}`,
             unitCostSnapshot: ingredientUnitCost,
           },
           queryRunner,
@@ -118,7 +118,11 @@ export class ProductionService {
       // --- 3. ENTRADA DE PRODUCTO TERMINADO ---
       const stockQtyProduced =
         input.quantityToProduce / recipe.finalProduct.conversionToBaseQty
-      const currentFinalProductCost = Number(recipe.finalProduct.costPrice || 0)
+
+      // El costo unitario producido es el total de ingredientes / cantidad producida
+      const unitCostOfProducedItem = Math.round(
+        totalProductionCost / stockQtyProduced,
+      )
 
       await this.inventoryTransactionsService.registerMovement(
         userId,
@@ -126,16 +130,15 @@ export class ProductionService {
           itemId: recipe.finalProductId,
           type: TransactionType.PRODUCTION_IN,
           quantity: stockQtyProduced,
-          unitCostSnapshot: currentFinalProductCost,
+          unitCostSnapshot: unitCostOfProducedItem,
           documentRef: `PROD-RECIPE-${recipe.id}`,
-          notes: `Producción finalizada de ${input.quantityToProduce} unidades.`,
+          notes: `Producción de ${input.quantityToProduce} unidades finalizada.`,
         },
         queryRunner,
       )
 
       if (!externalRunner) await queryRunner.commitTransaction()
 
-      // Devolvemos el ítem actualizado
       const updatedItem = await queryRunner.manager.findOne(Item, {
         where: { id: recipe.finalProductId },
       })
@@ -143,16 +146,11 @@ export class ProductionService {
       return updatedItem!
     } catch (err) {
       if (!externalRunner) await queryRunner.rollbackTransaction()
-
-      // Si ya es un error estructurado de Nest (nuestro BadRequest de arriba), lo relanzamos
       if (
         err instanceof BadRequestException ||
         err instanceof NotFoundException
-      ) {
+      )
         throw err
-      }
-
-      // Si es un error inesperado, lanzamos error interno
       throw new InternalServerErrorException(ItemErrorCode.INTERNAL_ERROR)
     } finally {
       if (!externalRunner) await queryRunner.release()
@@ -171,12 +169,16 @@ export class ProductionService {
   //   }
 
   //   try {
-  //     const recipe = await this.recipesService.findOne(input.recipeId, userId)
-  //     if (!recipe) throw new NotFoundException('Receta no encontrada.')
+  //     // const recipe = await this.recipesService.findOne(input.recipeId, userId)
+  //     const recipe = await this.recipesService.findByFinalProductId(
+  //       input.itemId,
+  //       userId,
+  //     )
+  //     if (!recipe) throw new NotFoundException(ItemErrorCode.ITEM_NOT_FOUND)
 
   //     const factor = input.quantityToProduce / recipe.yieldQuantity
 
-  //     // --- 1. VALIDACIÓN DE STOCK (Usando el runner para consistencia en Batch) ---
+  //     // --- 1. VALIDACIÓN DE STOCK ---
   //     const missingIngredients: string[] = []
 
   //     for (const ingredient of recipe.ingredients) {
@@ -191,22 +193,16 @@ export class ProductionService {
 
   //       const currentStock = Number(dbItem?.stock || 0)
   //       if (currentStock < stockQtyToConsume) {
-  //         // missingIngredients.push(ingredient.ingredientItem.name)
-  //         throw new BadRequestException(ItemErrorCode.INSUFFICIENT_STOCK)
+  //         missingIngredients.push(ingredient.ingredientItem.name)
   //       }
   //     }
 
+  //     // Si falta stock, lanzamos la excepción estructurada para el Filtro
   //     if (missingIngredients.length > 0) {
-  //       throw new GraphQLError(
-  //         `Faltan ingredientes para producir ${recipe.finalProduct.name}`,
-  //         {
-  //           extensions: {
-  //             code: 'INSUFFICIENT_INGREDIENTS',
-  //             httpStatus: 400,
-  //             ingredients: missingIngredients,
-  //           },
-  //         },
-  //       )
+  //       throw new BadRequestException({
+  //         message: ItemErrorCode.INSUFFICIENT_STOCK,
+  //         details: missingIngredients, // Android recibirá esto para mostrar qué falta
+  //       })
   //     }
 
   //     // --- 2. REGISTRO DE CONSUMO DE INGREDIENTES ---
@@ -252,7 +248,7 @@ export class ProductionService {
 
   //     if (!externalRunner) await queryRunner.commitTransaction()
 
-  //     // Devolvemos el ítem actualizado (refrescado de la DB)
+  //     // Devolvemos el ítem actualizado
   //     const updatedItem = await queryRunner.manager.findOne(Item, {
   //       where: { id: recipe.finalProductId },
   //     })
@@ -260,7 +256,17 @@ export class ProductionService {
   //     return updatedItem!
   //   } catch (err) {
   //     if (!externalRunner) await queryRunner.rollbackTransaction()
-  //     throw err
+
+  //     // Si ya es un error estructurado de Nest (nuestro BadRequest de arriba), lo relanzamos
+  //     if (
+  //       err instanceof BadRequestException ||
+  //       err instanceof NotFoundException
+  //     ) {
+  //       throw err
+  //     }
+
+  //     // Si es un error inesperado, lanzamos error interno
+  //     throw new InternalServerErrorException(ItemErrorCode.INTERNAL_ERROR)
   //   } finally {
   //     if (!externalRunner) await queryRunner.release()
   //   }
@@ -273,7 +279,6 @@ export class ProductionService {
     userId: string,
     inputs: ProduceItemInput[],
   ): Promise<BulkItemResponse> {
-    // Cambiamos el retorno a BulkItemResponse
     if (!inputs || inputs.length === 0) return { created: [], errors: [] }
 
     const queryRunner = this.dataSource.createQueryRunner()
@@ -285,33 +290,34 @@ export class ProductionService {
     for (let i = 0; i < inputs.length; i++) {
       const input = inputs[i]
 
-      // Iniciamos transacción por CADA ítem para permitir éxito/fallo individual
+      // Intentamos obtener el nombre del producto para el reporte de errores
+      let itemName = `Producto #${i + 1}`
+
       await queryRunner.startTransaction()
       try {
         const updatedItem = await this.produce(userId, input, queryRunner)
         await queryRunner.commitTransaction()
 
+        itemName = updatedItem.name
         createdItems.push(updatedItem)
       } catch (err: any) {
         await queryRunner.rollbackTransaction()
 
-        // Extraemos el código de error y los detalles si existen
-        const errorCode = err.response?.message || ItemErrorCode.INTERNAL_ERROR
+        const errorCode =
+          err.response?.message || err.message || ItemErrorCode.INTERNAL_ERROR
         const details = err.response?.details || null
 
         errorReport.push({
           row: i + 1,
-          name: input.itemId, // O el nombre del producto si lo tienes a mano
+          name: itemName,
           error: errorCode,
-          details: details, // Aquí viajarán los nombres de los ingredientes faltantes
+          details: details, // Aquí van los ingredientes faltantes
         })
       }
     }
 
     await queryRunner.release()
 
-    // Si hubo errores, lanzamos la excepción estructurada para que el filtro
-    // la envíe a Android con el código BULK_PARTIAL_SUCCESS
     if (errorReport.length > 0) {
       throw new BadRequestException({
         message: ItemErrorCode.BULK_PARTIAL_SUCCESS,
@@ -321,6 +327,58 @@ export class ProductionService {
 
     return { created: createdItems, errors: [] }
   }
+  // async produceItemsBatch(
+  //   userId: string,
+  //   inputs: ProduceItemInput[],
+  // ): Promise<BulkItemResponse> {
+  //   // Cambiamos el retorno a BulkItemResponse
+  //   if (!inputs || inputs.length === 0) return { created: [], errors: [] }
+
+  //   const queryRunner = this.dataSource.createQueryRunner()
+  //   await queryRunner.connect()
+
+  //   const createdItems: Item[] = []
+  //   const errorReport: BulkItemError[] = []
+
+  //   for (let i = 0; i < inputs.length; i++) {
+  //     const input = inputs[i]
+
+  //     // Iniciamos transacción por CADA ítem para permitir éxito/fallo individual
+  //     await queryRunner.startTransaction()
+  //     try {
+  //       const updatedItem = await this.produce(userId, input, queryRunner)
+  //       await queryRunner.commitTransaction()
+
+  //       createdItems.push(updatedItem)
+  //     } catch (err: any) {
+  //       await queryRunner.rollbackTransaction()
+
+  //       // Extraemos el código de error y los detalles si existen
+  //       const errorCode = err.response?.message || ItemErrorCode.INTERNAL_ERROR
+  //       const details = err.response?.details || null
+
+  //       errorReport.push({
+  //         row: i + 1,
+  //         name: input.itemId, // O el nombre del producto si lo tienes a mano
+  //         error: errorCode,
+  //         details: details, // Aquí viajarán los nombres de los ingredientes faltantes
+  //       })
+  //     }
+  //   }
+
+  //   await queryRunner.release()
+
+  //   // Si hubo errores, lanzamos la excepción estructurada para que el filtro
+  //   // la envíe a Android con el código BULK_PARTIAL_SUCCESS
+  //   if (errorReport.length > 0) {
+  //     throw new BadRequestException({
+  //       message: ItemErrorCode.BULK_PARTIAL_SUCCESS,
+  //       details: errorReport,
+  //     })
+  //   }
+
+  //   return { created: createdItems, errors: [] }
+  // }
   // async produceItemsBatch(
   //   userId: string,
   //   inputs: ProduceItemInput[],
@@ -364,17 +422,18 @@ export class ProductionService {
     inputs: ProduceItemInput[],
   ): Promise<BatchSimulationResponse> {
     const itemsResponse: SimulatedItem[] = []
-    const alerts: StockAlert[] = []
+    const alertsMap = new Map<string, StockAlert>() // Usamos Map para agrupar alertas
     let isViable = true
 
+    // Mapa para seguir el stock virtual mientras descontamos
     const virtualStockMap = new Map<string, number>()
 
     for (const input of inputs) {
-      // const recipe = await this.recipesService.findOne(input.recipeId, userId)
       const recipe = await this.recipesService.findByFinalProductId(
         input.itemId,
         userId,
       )
+
       if (!recipe) continue
 
       const finalProduct = recipe.finalProduct
@@ -384,9 +443,16 @@ export class ProductionService {
       for (const recipeIng of recipe.ingredients) {
         const ingItem = recipeIng.ingredientItem
         const factor = input.quantityToProduce / recipe.yieldQuantity
-        const totalRequired =
-          (recipeIng.quantityRequired * factor) / ingItem.conversionToBaseQty
 
+        // Calculamos la cantidad necesaria con precisión
+        const totalRequired = Number(
+          (
+            (recipeIng.quantityRequired * factor) /
+            ingItem.conversionToBaseQty
+          ).toFixed(4),
+        )
+
+        // Si no está en nuestro mapa virtual, cargamos el stock real inicial
         if (!virtualStockMap.has(ingItem.id)) {
           virtualStockMap.set(ingItem.id, Number(ingItem.stock))
         }
@@ -397,38 +463,124 @@ export class ProductionService {
           itemCanBeProduced = false
           isViable = false
 
-          const alreadyAlerted = alerts.find(
-            (a) => a.ingredientName === ingItem.name,
-          )
-          if (!alreadyAlerted) {
-            alerts.push({
+          // Calculamos cuánto falta sumando a lo que ya faltaba antes para este ingrediente
+          const missingForThisStep = totalRequired - currentAvailable
+
+          if (alertsMap.has(ingItem.id)) {
+            const existingAlert = alertsMap.get(ingItem.id)!
+            existingAlert.missingQuantity = Number(
+              (existingAlert.missingQuantity + missingForThisStep).toFixed(2),
+            )
+          } else {
+            alertsMap.set(ingItem.id, {
               ingredientName: ingItem.name,
-              missingQuantity: Number(
-                (totalRequired - currentAvailable).toFixed(2),
-              ),
+              missingQuantity: Number(missingForThisStep.toFixed(2)),
               unit: recipeIng.unitOfMeasure,
             })
           }
+
+          // El stock virtual queda en 0 porque ya no hay más para futuros ítems del batch
+          virtualStockMap.set(ingItem.id, 0)
         } else {
-          virtualStockMap.set(ingItem.id, currentAvailable - totalRequired)
+          // Descontamos del stock virtual con precisión
+          virtualStockMap.set(
+            ingItem.id,
+            Number((currentAvailable - totalRequired).toFixed(4)),
+          )
         }
 
         ingredientsUsage.push({
           name: ingItem.name,
-          totalUsedForThisItem: Number(totalRequired.toFixed(4)),
+          totalUsedForThisItem: totalRequired,
           unit: recipeIng.unitOfMeasure,
         })
       }
 
       itemsResponse.push({
         itemId: recipe.finalProductId,
-        itemName: finalProduct?.name ?? null,
+        itemName: finalProduct?.name ?? 'Desconocido',
         requestedQuantity: input.quantityToProduce,
         ingredientsUsage,
         hasInsufficientStock: !itemCanBeProduced,
       })
     }
 
-    return { isViable, items: itemsResponse, alerts }
+    return {
+      isViable,
+      items: itemsResponse,
+      alerts: Array.from(alertsMap.values()), // Convertimos el Map a Array para el cliente
+    }
   }
+  // async simulateBatch(
+  //   userId: string,
+  //   inputs: ProduceItemInput[],
+  // ): Promise<BatchSimulationResponse> {
+  //   const itemsResponse: SimulatedItem[] = []
+  //   const alerts: StockAlert[] = []
+  //   let isViable = true
+
+  //   const virtualStockMap = new Map<string, number>()
+
+  //   for (const input of inputs) {
+  //     // const recipe = await this.recipesService.findOne(input.recipeId, userId)
+  //     const recipe = await this.recipesService.findByFinalProductId(
+  //       input.itemId,
+  //       userId,
+  //     )
+  //     if (!recipe) continue
+
+  //     const finalProduct = recipe.finalProduct
+  //     const ingredientsUsage: IngredientConsumption[] = []
+  //     let itemCanBeProduced = true
+
+  //     for (const recipeIng of recipe.ingredients) {
+  //       const ingItem = recipeIng.ingredientItem
+  //       const factor = input.quantityToProduce / recipe.yieldQuantity
+  //       const totalRequired =
+  //         (recipeIng.quantityRequired * factor) / ingItem.conversionToBaseQty
+
+  //       if (!virtualStockMap.has(ingItem.id)) {
+  //         virtualStockMap.set(ingItem.id, Number(ingItem.stock))
+  //       }
+
+  //       const currentAvailable = virtualStockMap.get(ingItem.id) ?? 0
+
+  //       if (currentAvailable < totalRequired) {
+  //         itemCanBeProduced = false
+  //         isViable = false
+
+  //         const alreadyAlerted = alerts.find(
+  //           (a) => a.ingredientName === ingItem.name,
+  //         )
+  //         if (!alreadyAlerted) {
+  //           alerts.push({
+  //             ingredientName: ingItem.name,
+  //             missingQuantity: Number(
+  //               (totalRequired - currentAvailable).toFixed(2),
+  //             ),
+  //             unit: recipeIng.unitOfMeasure,
+  //           })
+  //         }
+  //       } else {
+  //         virtualStockMap.set(ingItem.id, currentAvailable - totalRequired)
+  //       }
+
+  //       ingredientsUsage.push({
+  //         name: ingItem.name,
+  //         totalUsedForThisItem: Number(totalRequired.toFixed(4)),
+  //         unit: recipeIng.unitOfMeasure,
+  //       })
+  //     }
+
+  //     itemsResponse.push({
+  //       itemId: recipe.finalProductId,
+  //       itemName: finalProduct?.name ?? null,
+  //       requestedQuantity: input.quantityToProduce,
+  //       ingredientsUsage,
+  //       hasInsufficientStock: !itemCanBeProduced,
+  //     })
+  //   }
+
+  //   return { isViable, items: itemsResponse, alerts }
+  // }
 }

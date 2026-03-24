@@ -1,6 +1,7 @@
 import { InputType, Field, ID, Float } from '@nestjs/graphql'
-import { IsOptional, IsUUID } from 'class-validator'
+import { IsNumber, IsOptional, IsUUID, Min } from 'class-validator'
 import { BaseUnit } from '../entities/item.entity'
+import { Transform } from 'class-transformer'
 
 @InputType()
 export class UpdateItemInput {
@@ -43,7 +44,14 @@ export class BulkUpdateItemInput {
   @Field(() => Float, { nullable: true })
   minStockAlert?: number
 
+  // @Field(() => Float, { nullable: true })
+  // salePrice?: number
+
   @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Transform(({ value }) => (value ? Math.round(value) : value)) // 👈 A centavos
   salePrice?: number
 
   @Field({ nullable: true })

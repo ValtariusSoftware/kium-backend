@@ -116,21 +116,37 @@ export class Item {
   @Field(() => Float, { nullable: true })
   minStockAlert: number | null
 
-  @Column('decimal', {
+  // @Column('decimal', {
+  //   name: 'cost_price',
+  //   nullable: true,
+  //   precision: 12,
+  //   scale: 2,
+  //   transformer: numericTransformer,
+  // })
+  // @Field(() => Float, { nullable: true })
+  // costPrice: number | null
+
+  // @Column('decimal', {
+  //   name: 'sale_price',
+  //   nullable: true,
+  //   precision: 12,
+  //   scale: 2,
+  //   transformer: numericTransformer,
+  // })
+  // @Field(() => Float, { nullable: true })
+  // salePrice: number | null
+
+  @Column('bigint', {
     name: 'cost_price',
     nullable: true,
-    precision: 12,
-    scale: 2,
     transformer: numericTransformer,
   })
-  @Field(() => Float, { nullable: true })
-  costPrice: number | null
+  @Field(() => Float, { nullable: true }) // En GraphQL seguimos enviando Float para el cliente
+  costPrice: number | null // En la lógica de la App será el valor en centavos
 
-  @Column('decimal', {
+  @Column('bigint', {
     name: 'sale_price',
     nullable: true,
-    precision: 12,
-    scale: 2,
     transformer: numericTransformer,
   })
   @Field(() => Float, { nullable: true })

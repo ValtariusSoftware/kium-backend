@@ -49,18 +49,34 @@ export class InventoryTransaction {
   @Field(() => Float)
   quantity: number
 
-  @Column('decimal', {
-    precision: 12,
-    scale: 2, // Dinero: 2 decimales
+  // @Column('decimal', {
+  //   precision: 12,
+  //   scale: 2, // Dinero: 2 decimales
+  //   name: 'unit_cost_snapshot',
+  //   transformer: numericTransformer,
+  // })
+  // @Field(() => Float)
+  // unitCostSnapshot: number
+
+  // @Column('decimal', {
+  //   precision: 12,
+  //   scale: 2, // Dinero: 2 decimales
+  //   name: 'sale_price_snapshot',
+  //   nullable: true,
+  //   default: 0,
+  //   transformer: numericTransformer,
+  // })
+  // @Field(() => Float, { nullable: true })
+  // salePriceSnapshot?: number
+
+  @Column('bigint', {
     name: 'unit_cost_snapshot',
     transformer: numericTransformer,
   })
   @Field(() => Float)
   unitCostSnapshot: number
 
-  @Column('decimal', {
-    precision: 12,
-    scale: 2, // Dinero: 2 decimales
+  @Column('bigint', {
     name: 'sale_price_snapshot',
     nullable: true,
     default: 0,

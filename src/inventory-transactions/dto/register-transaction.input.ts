@@ -3,7 +3,6 @@ import {
   IsUUID,
   IsIn,
   IsNumber,
-  IsPositive,
   IsOptional,
   IsString,
   Min,
@@ -28,21 +27,36 @@ export class RegisterTransactionInput {
   @Transform(({ value }) => Number(parseFloat(value).toFixed(4))) // 👈 Cantidad: 4 decimales
   quantity: number
 
-  @Field(() => Float, { nullable: true })
+  // @Field(() => Float, { nullable: true })
+  // @IsNumber()
+  // @IsPositive()
+  // @IsOptional()
+  // @Transform(({ value }) =>
+  //   value ? Number(parseFloat(value).toFixed(2)) : value,
+  // ) // 👈 Costo: 2 decimales
+  // unitCostSnapshot?: number
+
+  // @Field(() => Float, { nullable: true })
+  // @IsNumber()
+  // @IsOptional()
+  // @Transform(({ value }) =>
+  //   value ? Number(parseFloat(value).toFixed(2)) : value,
+  // ) // 👈 Precio: 2 decimales
+  // salePriceSnapshot?: number
+
+  // EL CAMBIO: Costo y Precio ahora vienen como Enteros (Centavos)
+  @Field(() => Float, { nullable: true }) // Mantenemos Float en GraphQL por compatibilidad
   @IsNumber()
-  @IsPositive()
+  @Min(0) // Usamos Min(0) en lugar de IsPositive por si algo cuesta 0
   @IsOptional()
-  @Transform(({ value }) =>
-    value ? Number(parseFloat(value).toFixed(2)) : value,
-  ) // 👈 Costo: 2 decimales
+  @Transform(({ value }) => Math.round(value)) // 👈 Nos aseguramos de que sea un entero
   unitCostSnapshot?: number
 
   @Field(() => Float, { nullable: true })
   @IsNumber()
+  @Min(0)
   @IsOptional()
-  @Transform(({ value }) =>
-    value ? Number(parseFloat(value).toFixed(2)) : value,
-  ) // 👈 Precio: 2 decimales
+  @Transform(({ value }) => Math.round(value)) // 👈 Nos aseguramos de que sea un entero
   salePriceSnapshot?: number
 
   @Field({ nullable: true, defaultValue: false })

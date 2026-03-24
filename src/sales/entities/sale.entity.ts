@@ -35,14 +35,22 @@ export class Sale {
   @PrimaryGeneratedColumn('uuid')
   id: string
 
-  @Field(() => Float)
-  @Column('decimal', {
+  // @Field(() => Float)
+  // @Column('decimal', {
+  //   name: 'total_amount',
+  //   precision: 12,
+  //   scale: 2,
+  //   default: 0,
+  //   transformer: numericTransformer, // 👈 CRUCIAL: Para recibir un número y no un string
+  // })
+  // totalAmount: number
+
+  @Column('bigint', {
     name: 'total_amount',
-    precision: 12,
-    scale: 2,
     default: 0,
-    transformer: numericTransformer, // 👈 CRUCIAL: Para recibir un número y no un string
+    transformer: numericTransformer,
   })
+  @Field(() => Float)
   totalAmount: number
 
   @Field()

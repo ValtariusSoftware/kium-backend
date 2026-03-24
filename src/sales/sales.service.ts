@@ -33,7 +33,6 @@ export class SalesService {
       const savedSale = await queryRunner.manager.save(newSale)
 
       let totalSaleAmount = 0
-
       // 2. Registrar cada producto como un movimiento de inventario vinculado a esta venta
       for (const itemInput of input.items) {
         const transaction = await this.inventoryService.registerMovement(
@@ -50,9 +49,20 @@ export class SalesService {
         )
 
         // Sumamos al total (cantidad * precio de venta en ese momento)
-        totalSaleAmount +=
+        // totalSaleAmount +=
+        //   Math.abs(Number(transaction.quantity)) *
+        //   Number(transaction.salePriceSnapshot)
+
+        // CORRECCIÓN MATEMÁTICA:
+        // 1. quantity es decimal (ej: 1.5)
+        // 2. salePriceSnapshot es entero (ej: 1000 centavos)
+        // 3. Redondeamos el resultado final para asegurar que grabamos ENTEROS (centavos)
+        const lineTotal = Math.round(
           Math.abs(Number(transaction.quantity)) *
-          Number(transaction.salePriceSnapshot)
+            Number(transaction.salePriceSnapshot),
+        )
+
+        totalSaleAmount += lineTotal
       }
 
       // 3. Actualizar el monto total real de la venta

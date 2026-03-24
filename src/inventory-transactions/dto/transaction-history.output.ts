@@ -13,10 +13,16 @@ export class TransactionHistoryItem {
   @Field(() => Float)
   quantity: number
 
-  @Field(() => Float)
+  // @Field(() => Float)
+  // unitCostSnapshot: number
+
+  // @Field(() => Float, { nullable: true })
+  // salePriceSnapshot?: number
+
+  @Field(() => Float) // 👈 Esto enviará el entero (ej: 1050)
   unitCostSnapshot: number
 
-  @Field(() => Float, { nullable: true })
+  @Field(() => Float, { nullable: true }) // 👈 Esto enviará el entero (ej: 2500)
   salePriceSnapshot?: number
 
   @Field({ nullable: true })

@@ -137,18 +137,21 @@ export class ItemsService {
           `Límite alcanzado. Máximo ${this.ITEM_LIMIT_FREE} ítems.`,
         )
       }
+      // 2. SANITIZACIÓN DE PRECIOS (MONEDA -> BIGINT)
+      // Redondeamos para asegurar que no haya decimales en los campos de dinero.
+      const cleanCostPrice = Math.round(createItemInput.costPrice || 0)
+      const cleanSalePrice = Math.round(createItemInput.salePrice || 0)
 
-      // 2. Inferencia de Roles basada en Precios
-      const roles = this.calculateItemRoles(
-        createItemInput.costPrice,
-        createItemInput.salePrice,
-      )
+      // 3. Inferencia de Roles basada en los precios sanitizados
+      const roles = this.calculateItemRoles(cleanCostPrice, cleanSalePrice)
 
       const initialStock = createItemInput.stock || 0.0
 
       const itemDataToCreate = {
         ...createItemInput,
         ...roles,
+        costPrice: cleanCostPrice, // Guardamos el entero (centavos)
+        salePrice: cleanSalePrice, // Guardamos el entero (centavos)
         stock: 0.0, // Stock inicial siempre 0 para auditar vía movimiento
         userId,
       }
@@ -165,7 +168,7 @@ export class ItemsService {
             itemId: savedItem.id,
             type: TransactionType.INITIAL_INVENTORY,
             quantity: initialStock,
-            unitCostSnapshot: createItemInput.costPrice || 0,
+            unitCostSnapshot: cleanCostPrice, // Se envía como entero (centavos)
             documentRef: 'INITIAL',
             notes: 'Inventario inicial al crear el ítem.',
           },
@@ -175,7 +178,7 @@ export class ItemsService {
 
       await queryRunner.commitTransaction()
 
-      const itemWithFinalStock = await this.itemsRepository.findOne({
+      const itemWithFinalStock = await queryRunner.manager.findOne(Item, {
         where: { id: savedItem.id },
       })
       if (!itemWithFinalStock)
@@ -330,7 +333,9 @@ export class ItemsService {
 
     // 1. Solo necesitamos recalcular roles si cambia el salePrice
     // (porque el costPrice ahora es "fijo" para este método)
+    // 1. Sanitizar SOLO el precio de venta (si viene)
     if (updateData.salePrice !== undefined) {
+      updateData.salePrice = Math.round(updateData.salePrice || 0)
       const newRoles = this.calculateItemRoles(
         item.costPrice,
         updateData.salePrice,
@@ -339,7 +344,10 @@ export class ItemsService {
       Object.assign(item, newRoles)
     }
 
-    // 2. Fusionar el resto de los datos (nombre, barcode, sku, etc.)
+    // 2. Fusionar el resto (nombre, barcode, sku, etc.)
+    // IMPORTANTE: Asegurate que UpdateItemInput no traiga costPrice,
+    // o si lo trae, ignoralo aquí para que no pise el valor de inventario.
+    delete (updateData as any).costPrice
     Object.assign(item, updateData)
 
     try {
@@ -400,11 +408,16 @@ export class ItemsService {
       await queryRunner.startTransaction()
 
       try {
-        const roles = this.calculateItemRoles(input.costPrice, input.salePrice)
+        const cleanCost = Math.round(input.costPrice || 0)
+        const cleanSale = Math.round(input.salePrice || 0)
+
+        const roles = this.calculateItemRoles(cleanCost, cleanSale)
 
         const newItem = queryRunner.manager.create(Item, {
           ...input,
           ...roles,
+          costPrice: cleanCost,
+          salePrice: cleanSale,
           stock: 0,
           userId,
         })
@@ -621,7 +634,11 @@ export class ItemsService {
         }
 
         // Recalcular roles (Profit, etc) si el precio de venta cambió
+        // --- AJUSTE BIGINT: Sanitizar el precio de venta si viene ---
         if (input.salePrice !== undefined) {
+          input.salePrice = Math.round(input.salePrice || 0) // Convertir a centavos limpios
+
+          // Recalcular roles usando el costo ACTUAL (item.costPrice ya es number por el transformer)
           const newRoles = this.calculateItemRoles(
             item.costPrice,
             input.salePrice,
@@ -630,7 +647,9 @@ export class ItemsService {
           Object.assign(item, newRoles)
         }
 
-        // 🚩 Object.assign ahora usará los valores con TRIM
+        // 🚩 IMPORTANTE: El costo NO se toca en el catálogo. Lo eliminamos del input por seguridad.
+        delete (input as any).costPrice
+
         Object.assign(item, input)
         await queryRunner.manager.save(item)
 
@@ -777,6 +796,9 @@ export class ItemsService {
         sku: originalSku,
         barcode: originalBarcode,
         userId: userId,
+        // 🚩 REFUERZO: Aseguramos que los precios se mantengan como enteros
+        costPrice: oldItem.costPrice ? Math.round(oldItem.costPrice) : null,
+        salePrice: oldItem.salePrice ? Math.round(oldItem.salePrice) : null,
       }
 
       const newItem = queryRunner.manager.create(Item, newItemData as Item)
