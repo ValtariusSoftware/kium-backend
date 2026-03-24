@@ -15,13 +15,20 @@ export class SaleItemInput {
   @Transform(({ value }) => Number(parseFloat(value).toFixed(4)))
   quantity: number
 
+  // @Field(() => Float, { nullable: true })
+  // @IsOptional()
+  // @IsNumber()
+  // @Min(0)
+  // @Transform(({ value }) =>
+  //   value ? Number(parseFloat(value).toFixed(2)) : value,
+  // )
+  // priceOverride?: number
+
   @Field(() => Float, { nullable: true })
   @IsOptional()
   @IsNumber()
   @Min(0)
-  @Transform(({ value }) =>
-    value ? Number(parseFloat(value).toFixed(2)) : value,
-  )
+  @Transform(({ value }) => (value ? Math.round(value) : value)) // 👈 Precio: Ahora centavos (Entero)
   priceOverride?: number
 }
 

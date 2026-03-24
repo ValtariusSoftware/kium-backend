@@ -60,9 +60,7 @@ export class InventoryTransactionsService {
         where: { id: input.itemId, userId },
       })
 
-      if (!item) {
-        throw new BadRequestException(ItemErrorCode.ITEM_NOT_FOUND)
-      }
+      if (!item) throw new BadRequestException(ItemErrorCode.ITEM_NOT_FOUND)
 
       // --- 0. NORMALIZACIÓN DE CANTIDAD ---
       const outTypes = [
@@ -70,9 +68,7 @@ export class InventoryTransactionsService {
         TransactionType.ADJUSTMENT_OUT,
         TransactionType.CONSUMPTION,
       ]
-      // Si es un ajuste de medida, respetamos el signo que viene (positivo o negativo)
-      // Si es un tipo de salida conocido, forzamos negativo.
-      // Si es cualquier otro (compra, inicial), forzamos positivo.
+
       let finalQuantity: number
       if (input.type === TransactionType.MEASUREMENT_ADJUSTMENT) {
         finalQuantity = input.quantity
@@ -82,45 +78,25 @@ export class InventoryTransactionsService {
           : Math.abs(input.quantity)
       }
 
-      // const finalQuantity = outTypes.includes(input.type)
-      //   ? -Math.abs(input.quantity)
-      //   : Math.abs(input.quantity)
-
-      // --- 🛡️ VALIDACIÓN DE STOCK SIMPLE ---
+      // --- 1. VALIDACIÓN DE STOCK ---
       if (outTypes.includes(input.type)) {
-        const potentialStock = Number(item.stock) + finalQuantity
-
-        if (potentialStock < 0) {
-          // throw new GraphQLError(
-          //   `Stock insuficiente para ${item.name}. Disponible: ${item.stock}`,
-          //   {
-          //     extensions: {
-          //       code: 'INSUFFICIENT_STOCK',
-          //       httpStatus: 400,
-          //       available: item.stock,
-          //     },
-          //   },
-          // )
+        if (Number(item.stock) + finalQuantity < 0) {
           throw new BadRequestException(ItemErrorCode.INSUFFICIENT_STOCK)
         }
       }
 
-      // --- 1. SNAPSHOTS (CORREGIDO) ---
-      // El costo: Si viene en el input se usa, sino el de la ficha maestra
-      const unitCostSnapshot =
-        input.unitCostSnapshot ?? Number(item.costPrice ?? 0)
-
-      // El precio de venta:
-      // 1. Prioridad: Lo que viene por input (crucial para anulaciones y overrides)
-      // 2. Si es una VENTA y no viene input: Usamos el de la ficha maestra
-      // 3. Caso contrario: 0
-      let salePriceSnapshot = input.salePriceSnapshot ?? 0
+      // --- 2. SNAPSHOTS DE PRECIOS ---
+      // Redondeamos a centavos enteros para evitar ruidos de punto flotante
+      const unitCostSnapshot = Math.round(
+        input.unitCostSnapshot ?? Number(item.costPrice ?? 0),
+      )
+      let salePriceSnapshot = Math.round(input.salePriceSnapshot ?? 0)
 
       if (input.type === TransactionType.SALE && !input.salePriceSnapshot) {
         salePriceSnapshot = Number(item.salePrice ?? 0)
       }
 
-      // 2. Crear registro
+      // --- 3. CREAR EL REGISTRO DE TRANSACCIÓN ---
       const newTransaction = runner.manager.create(InventoryTransaction, {
         ...input,
         quantity: finalQuantity,
@@ -128,26 +104,29 @@ export class InventoryTransactionsService {
         unitCostSnapshot,
         salePriceSnapshot,
       })
-
       const savedTransaction = await runner.manager.save(newTransaction)
 
-      // --- 3. Actualizar Ficha Maestra (Solo para compras o inventario inicial) ---
+      // --- 4. GESTIÓN CRÍTICA DE COSTOS MAESTROS (Tu lógica) ---
       const isPurchase =
         input.type === TransactionType.PURCHASE ||
         input.type === TransactionType.INITIAL_INVENTORY
+
       const priceWasProvided =
         input.unitCostSnapshot !== undefined && input.unitCostSnapshot !== null
 
       if (isPurchase && priceWasProvided) {
+        /**
+         * CASO 1: Insumos o Productos de Reventa (Ej: Harina, Coca-Cola)
+         * Si NO es producido, el costo de la COMPRA manda.
+         * Actualizamos la ficha y propagamos el costo a las recetas que lo usen.
+         */
         if (!item.isProduced) {
-          // CASO A: Es un insumo o producto de reventa -> ACTUALIZAMOS TODO
-          await runner.manager.update(
-            Item,
-            { id: input.itemId },
-            { costPrice: unitCostSnapshot },
-          )
+          await runner.manager.update(Item, item.id, {
+            costPrice: unitCostSnapshot,
+          })
 
           if (item.isIngredient) {
+            // Si la Coca-Cola o la Harina subieron de precio, actualizamos los combos o panes
             await this.recipesService.syncRecipeCostsByIngredient(
               userId,
               item.id,
@@ -155,15 +134,18 @@ export class InventoryTransactionsService {
             )
           }
         } else {
-          // CASO B: Es producido -> El stock sube, pero el costo maestro NO se toca
-          // porque el costo maestro de un producido depende de su receta, no de una carga manual.
+          /**
+          CASO 2: Producto Producido (Ej: Dulce de Leche artesanal)
+          Aunque lo hayamos comprado hoy por una emergencia, NO tocamos el costo maestro.
+          El costo del Dulce de Leche en la ficha sigue siendo lo que diga su receta.
+         */
           console.log(
-            `[Inventory] Se omitió actualización de costo maestro para "${item.name}" por ser producto producido.`,
+            `[Cost Shield] Compra de ${item.name} registrada, pero se mantiene costo de receta.`,
           )
         }
       }
 
-      // 4. Actualizar stock físico
+      // --- 5. ACTUALIZAR STOCK FÍSICO ---
       await runner.manager.increment(
         Item,
         { id: input.itemId },
@@ -180,6 +162,147 @@ export class InventoryTransactionsService {
       if (!externalRunner) await runner.release()
     }
   }
+  // async registerMovement(
+  //   userId: string,
+  //   input: RegisterTransactionInput,
+  //   externalRunner?: QueryRunner,
+  // ): Promise<InventoryTransaction> {
+  //   const runner = externalRunner || this.dataSource.createQueryRunner()
+
+  //   if (!externalRunner) {
+  //     await runner.connect()
+  //     await runner.startTransaction()
+  //   }
+
+  //   try {
+  //     const item = await runner.manager.findOne(Item, {
+  //       where: { id: input.itemId, userId },
+  //     })
+
+  //     if (!item) {
+  //       throw new BadRequestException(ItemErrorCode.ITEM_NOT_FOUND)
+  //     }
+
+  //     // --- 0. NORMALIZACIÓN DE CANTIDAD ---
+  //     const outTypes = [
+  //       TransactionType.SALE,
+  //       TransactionType.ADJUSTMENT_OUT,
+  //       TransactionType.CONSUMPTION,
+  //     ]
+  //     // Si es un ajuste de medida, respetamos el signo que viene (positivo o negativo)
+  //     // Si es un tipo de salida conocido, forzamos negativo.
+  //     // Si es cualquier otro (compra, inicial), forzamos positivo.
+  //     let finalQuantity: number
+  //     if (input.type === TransactionType.MEASUREMENT_ADJUSTMENT) {
+  //       finalQuantity = input.quantity
+  //     } else {
+  //       finalQuantity = outTypes.includes(input.type)
+  //         ? -Math.abs(input.quantity)
+  //         : Math.abs(input.quantity)
+  //     }
+
+  //     // const finalQuantity = outTypes.includes(input.type)
+  //     //   ? -Math.abs(input.quantity)
+  //     //   : Math.abs(input.quantity)
+
+  //     // --- 🛡️ VALIDACIÓN DE STOCK SIMPLE ---
+  //     if (outTypes.includes(input.type)) {
+  //       const potentialStock = Number(item.stock) + finalQuantity
+
+  //       if (potentialStock < 0) {
+  //         // throw new GraphQLError(
+  //         //   `Stock insuficiente para ${item.name}. Disponible: ${item.stock}`,
+  //         //   {
+  //         //     extensions: {
+  //         //       code: 'INSUFFICIENT_STOCK',
+  //         //       httpStatus: 400,
+  //         //       available: item.stock,
+  //         //     },
+  //         //   },
+  //         // )
+  //         throw new BadRequestException(ItemErrorCode.INSUFFICIENT_STOCK)
+  //       }
+  //     }
+
+  //     /*// --- 1. SNAPSHOTS (CORREGIDO) ---
+  //     // El costo: Si viene en el input se usa, sino el de la ficha maestra
+  //     const unitCostSnapshot =
+  //       input.unitCostSnapshot ?? Number(item.costPrice ?? 0)
+
+  //     // El precio de venta:
+  //     // 1. Prioridad: Lo que viene por input (crucial para anulaciones y overrides)
+  //     // 2. Si es una VENTA y no viene input: Usamos el de la ficha maestra
+  //     // 3. Caso contrario: 0
+  //     let salePriceSnapshot = input.salePriceSnapshot ?? 0*/
+  //     const unitCostSnapshot = Math.round(
+  //       input.unitCostSnapshot ?? Number(item.costPrice ?? 0),
+  //     )
+  //     let salePriceSnapshot = Math.round(input.salePriceSnapshot ?? 0)
+
+  //     if (input.type === TransactionType.SALE && !input.salePriceSnapshot) {
+  //       salePriceSnapshot = Number(item.salePrice ?? 0)
+  //     }
+
+  //     // 2. Crear registro
+  //     const newTransaction = runner.manager.create(InventoryTransaction, {
+  //       ...input,
+  //       quantity: finalQuantity,
+  //       userId,
+  //       unitCostSnapshot,
+  //       salePriceSnapshot,
+  //     })
+
+  //     const savedTransaction = await runner.manager.save(newTransaction)
+
+  //     // --- 3. Actualizar Ficha Maestra (Solo para compras o inventario inicial) ---
+  //     const isPurchase =
+  //       input.type === TransactionType.PURCHASE ||
+  //       input.type === TransactionType.INITIAL_INVENTORY
+  //     const priceWasProvided =
+  //       input.unitCostSnapshot !== undefined && input.unitCostSnapshot !== null
+
+  //     if (isPurchase && priceWasProvided) {
+  //       if (!item.isProduced) {
+  //         // CASO A: Es un insumo o producto de reventa -> ACTUALIZAMOS TODO
+  //         await runner.manager.update(
+  //           Item,
+  //           { id: input.itemId },
+  //           { costPrice: unitCostSnapshot },
+  //         )
+
+  //         if (item.isIngredient) {
+  //           await this.recipesService.syncRecipeCostsByIngredient(
+  //             userId,
+  //             item.id,
+  //             runner,
+  //           )
+  //         }
+  //       } else {
+  //         // CASO B: Es producido -> El stock sube, pero el costo maestro NO se toca
+  //         // porque el costo maestro de un producido depende de su receta, no de una carga manual.
+  //         console.log(
+  //           `[Inventory] Se omitió actualización de costo maestro para "${item.name}" por ser producto producido.`,
+  //         )
+  //       }
+  //     }
+
+  //     // 4. Actualizar stock físico
+  //     await runner.manager.increment(
+  //       Item,
+  //       { id: input.itemId },
+  //       'stock',
+  //       finalQuantity,
+  //     )
+
+  //     if (!externalRunner) await runner.commitTransaction()
+  //     return savedTransaction
+  //   } catch (err) {
+  //     if (!externalRunner) await runner.rollbackTransaction()
+  //     throw err
+  //   } finally {
+  //     if (!externalRunner) await runner.release()
+  //   }
+  // }
   async findByItem(
     itemId: string,
     userId: string,
@@ -328,6 +451,99 @@ export class InventoryTransactionsService {
       },
     }
   }
+  // async getFinancialReport(
+  //   userId: string,
+  //   startDate: Date,
+  //   endDate: Date,
+  //   groupBy: ReportGroupBy,
+  // ): Promise<FinancialReportResponse> {
+  //   const dateTrunc = groupBy === ReportGroupBy.DAY ? 'day' : 'month'
+  //   const format = groupBy === ReportGroupBy.DAY ? 'YYYY-MM-DD' : 'YYYY-MM'
+  //   // console.log('DEBUG: Rango recibido -> Start:', startDate, 'End:', endDate)
+  //   // 🚨 FORZAR MOCK DATA
+  //   const useMock = true // Cambia a false cuando quieras volver a la DB real
+  //   if (useMock) {
+  //     return this.generateMockData(startDate, endDate)
+  //   }
+
+  //   const results = await this.transactionRepository
+  //     .createQueryBuilder('t')
+  //     // Unimos con la tabla de ítems para acceder al parentId
+  //     .innerJoin('t.item', 'item')
+  //     .select(
+  //       `TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`,
+  //       'label',
+  //     )
+  //     .addSelect(
+  //       `SUM(CASE
+  //       WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot
+  //       -- Excluimos RETURN_FROM_SALE si el doc empieza con VOID
+  //       WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.salePriceSnapshot
+  //       ELSE 0 END)`,
+  //       'revenue',
+  //     )
+
+  //     .addSelect(
+  //       `SUM(CASE
+  //       WHEN t.type = 'SALE' THEN ABS(t.quantity) * unit_cost_snapshot
+  //       -- Excluimos RETURN_FROM_SALE si el doc empieza con VOID
+  //       WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * unit_cost_snapshot
+  //       WHEN t.type IN ('CONSUMPTION', 'PRODUCTION_OUT') THEN ABS(t.quantity) * unit_cost_snapshot
+  //       ELSE 0 END)`,
+  //       'cost',
+  //     )
+
+  //     .addSelect(
+  //       `SUM(CASE
+  //       WHEN t.type = 'ADJUSTMENT_OUT' THEN ABS(t.quantity) * "unit_cost_snapshot"
+  //       ELSE 0 END)`,
+  //       'losses',
+  //     )
+  //     .where('t.userId = :userId', { userId })
+  //     .leftJoin('t.sale', 'sale')
+  //     .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
+  //     .andWhere('t.createdAt >= :startDate', { startDate })
+  //     .andWhere('t.createdAt < :nextDay', {
+  //       nextDay: new Date(new Date(endDate).getTime() + 86400000), // Suma 24 horas (en milisegundos)
+  //     })
+  //     // Agrupamos por la etiqueta de tiempo
+  //     .groupBy(`TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`)
+  //     .orderBy('label', 'ASC')
+  //     .getRawMany()
+
+  //   const data: FinancialDataPoint[] = results.map((r) => ({
+  //     label: r.label,
+  //     revenue: Number(r.revenue || 0),
+  //     cost: Number(r.cost || 0),
+  //     losses: Number(r.losses || 0),
+  //     netProfit:
+  //       Math.round(
+  //         (Number(r.revenue || 0) -
+  //           Number(r.cost || 0) -
+  //           Number(r.losses || 0)) *
+  //           100,
+  //       ) / 100,
+  //   }))
+
+  //   // 1. Cálculos de Totales
+  //   const totalNet = data.reduce((sum, p) => sum + p.netProfit, 0)
+
+  //   const divisor = Math.min(data.length, 6)
+  //   const avgProfit = divisor > 0 ? totalNet / divisor : 0
+
+  //   console.log('DEBUG: Largo del array data ->', data.length)
+  //   console.log('DEBUG: Divisor final ->', divisor)
+
+  //   return {
+  //     data,
+  //     avgProfit: Math.round(avgProfit * 100) / 100,
+  //     range: {
+  //       start: startDate.toISOString().slice(0, 7),
+  //       end: endDate.toISOString().slice(0, 7),
+  //     },
+  //   }
+  // }
+
   async getFinancialReport(
     userId: string,
     startDate: Date,
@@ -338,42 +554,39 @@ export class InventoryTransactionsService {
     const format = groupBy === ReportGroupBy.DAY ? 'YYYY-MM-DD' : 'YYYY-MM'
     // console.log('DEBUG: Rango recibido -> Start:', startDate, 'End:', endDate)
     // 🚨 FORZAR MOCK DATA
-    const useMock = true // Cambia a false cuando quieras volver a la DB real
-    if (useMock) {
-      return this.generateMockData(startDate, endDate)
-    }
+    // const useMock = true // Cambia a false cuando quieras volver a la DB real
+    // if (useMock) {
+    //   return this.generateMockData(startDate, endDate)
+    // }
+    // ... lógica de mock y truncado igual ...
 
     const results = await this.transactionRepository
       .createQueryBuilder('t')
-      // Unimos con la tabla de ítems para acceder al parentId
       .innerJoin('t.item', 'item')
       .select(
         `TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`,
         'label',
       )
+      // Los SUM aquí operan sobre centavos (BigInt)
       .addSelect(
         `SUM(CASE 
-        WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot 
-        -- Excluimos RETURN_FROM_SALE si el doc empieza con VOID
-        WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.salePriceSnapshot 
-        ELSE 0 END)`,
+          WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot 
+          WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.salePriceSnapshot 
+          ELSE 0 END)`,
         'revenue',
       )
-
       .addSelect(
         `SUM(CASE 
-        WHEN t.type = 'SALE' THEN ABS(t.quantity) * unit_cost_snapshot 
-        -- Excluimos RETURN_FROM_SALE si el doc empieza con VOID
-        WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * unit_cost_snapshot 
-        WHEN t.type IN ('CONSUMPTION', 'PRODUCTION_OUT') THEN ABS(t.quantity) * unit_cost_snapshot 
-        ELSE 0 END)`,
+          WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unit_cost_snapshot 
+          WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.unit_cost_snapshot 
+          WHEN t.type IN ('CONSUMPTION', 'PRODUCTION_OUT') THEN ABS(t.quantity) * t.unit_cost_snapshot 
+          ELSE 0 END)`,
         'cost',
       )
-
       .addSelect(
         `SUM(CASE 
-        WHEN t.type = 'ADJUSTMENT_OUT' THEN ABS(t.quantity) * "unit_cost_snapshot"
-        ELSE 0 END)`,
+          WHEN t.type = 'ADJUSTMENT_OUT' THEN ABS(t.quantity) * t.unit_cost_snapshot
+          ELSE 0 END)`,
         'losses',
       )
       .where('t.userId = :userId', { userId })
@@ -381,39 +594,50 @@ export class InventoryTransactionsService {
       .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
       .andWhere('t.createdAt >= :startDate', { startDate })
       .andWhere('t.createdAt < :nextDay', {
-        nextDay: new Date(new Date(endDate).getTime() + 86400000), // Suma 24 horas (en milisegundos)
+        nextDay: new Date(new Date(endDate).getTime() + 86400000),
       })
-      // Agrupamos por la etiqueta de tiempo
       .groupBy(`TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`)
       .orderBy('label', 'ASC')
       .getRawMany()
 
-    const data: FinancialDataPoint[] = results.map((r) => ({
-      label: r.label,
-      revenue: Number(r.revenue || 0),
-      cost: Number(r.cost || 0),
-      losses: Number(r.losses || 0),
-      netProfit:
-        Math.round(
-          (Number(r.revenue || 0) -
-            Number(r.cost || 0) -
-            Number(r.losses || 0)) *
-            100,
-        ) / 100,
-    }))
+    const data: FinancialDataPoint[] = results.map((r) => {
+      // 1. Limpiamos el string de Postgres: nos quedamos con la parte entera antes del punto
+      // Postgres devuelve algo como "32780000.0000"
+      const cleanRevenue = (r.revenue || '0').split('.')[0]
+      const cleanCost = (r.cost || '0').split('.')[0]
+      const cleanLosses = (r.losses || '0').split('.')[0]
 
-    // 1. Cálculos de Totales
-    const totalNet = data.reduce((sum, p) => sum + p.netProfit, 0)
+      // 2. Ahora sí, convertimos a BigInt con seguridad
+      const rev = BigInt(cleanRevenue)
+      const cst = BigInt(cleanCost)
+      const los = BigInt(cleanLosses)
 
-    const divisor = Math.min(data.length, 6)
-    const avgProfit = divisor > 0 ? totalNet / divisor : 0
+      // 3. Operación con BigInt
+      const netProfitBig = rev - cst - los
 
-    console.log('DEBUG: Largo del array data ->', data.length)
-    console.log('DEBUG: Divisor final ->', divisor)
+      return {
+        label: r.label,
+        revenue: Number(rev),
+        cost: Number(cst),
+        losses: Number(los),
+        netProfit: Number(netProfitBig),
+      }
+    })
+
+    // Totales
+    const totalNetBig = data.reduce(
+      (sum, p) => sum + BigInt(p.netProfit),
+      BigInt(0),
+    )
+
+    const divisor = data.length > 0 ? Math.min(data.length, 6) : 1
+
+    // El promedio sí suele llevar decimales, pero como devolvemos centavos enteros:
+    const avgProfit = Number(totalNetBig) / divisor
 
     return {
       data,
-      avgProfit: Math.round(avgProfit * 100) / 100,
+      avgProfit: Math.round(avgProfit), // Mantenemos el promedio en centavos enteros
       range: {
         start: startDate.toISOString().slice(0, 7),
         end: endDate.toISOString().slice(0, 7),
@@ -425,14 +649,14 @@ export class InventoryTransactionsService {
    *
    */
   async getUserStatsMetadata(userId: string): Promise<UserStatsMetadata> {
-    const useMock = true
+    // const useMock = true
 
-    if (useMock) {
-      return {
-        firstMonth: '2025-02', // Inicio de tu fullHistory mockeado
-        lastMonth: '2026-03', // Fin de tu fullHistory mockeado
-      }
-    }
+    // if (useMock) {
+    //   return {
+    //     firstMonth: '2025-02', // Inicio de tu fullHistory mockeado
+    //     lastMonth: '2026-03', // Fin de tu fullHistory mockeado
+    //   }
+    // }
     const result = await this.transactionRepository
       .createQueryBuilder('t')
       .select("TO_CHAR(MIN(t.createdAt), 'YYYY-MM')", 'firstMonth')
