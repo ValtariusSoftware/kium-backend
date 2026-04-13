@@ -332,7 +332,7 @@ export class RecipesService {
 
     const finalProductId = recipe.finalProductId
 
-    // 2. Validar Circularidad si se cambian ingredientes
+    // 2. Validar Circularidad
     if (ingredients) {
       const ingredientIds = ingredients.map((ing) => ing.ingredientItemId)
       await this.checkForCircularDependency(
@@ -347,21 +347,33 @@ export class RecipesService {
     await queryRunner.startTransaction()
 
     try {
-      // 3. Actualizar datos de la receta
+      // 3. Actualizar rinde de la receta
       if (yieldQuantity) recipe.yieldQuantity = yieldQuantity
 
-      // 4. Reemplazo de ingredientes (Lógica manual para asegurar integridad)
+      // 4. Reemplazo de ingredientes (Uso explícito del manager para el insert)
       if (ingredients) {
-        await queryRunner.manager.delete('recipe_ingredients', { recipeId: id })
-        recipe.ingredients = ingredients.map((ing) => ({
-          ingredientItemId: ing.ingredientItemId,
-          quantityRequired: ing.quantityRequired,
-          unitOfMeasure: ing.unitOfMeasure,
-          notes: ing.notes,
-        })) as RecipeIngredient[]
+        // 1. Borrar usando la Entidad (TypeORM mapea recipeId -> recipe_id solo)
+        // Usamos el objeto de condición basado en la entidad
+        await queryRunner.manager.delete(RecipeIngredient, {
+          recipeId: id, // 🟢 Usá el nombre de la propiedad de la clase
+        })
+
+        // 2. Mapear a objetos de la Entidad
+        const newIngredients = ingredients.map((ing) => {
+          const ingredient = new RecipeIngredient()
+          ingredient.recipeId = id
+          ingredient.ingredientItemId = ing.ingredientItemId
+          ingredient.quantityRequired = ing.quantityRequired
+          ingredient.unitOfMeasure = ing.unitOfMeasure
+          ingredient.notes = ing.notes
+          return ingredient
+        })
+
+        // 3. Insertar usando la Entidad
+        await queryRunner.manager.insert(RecipeIngredient, newIngredients)
       }
 
-      // 5. Recalcular Costo Teórico con Normalización
+      // 5. Recalcular Costo Teórico
       let totalRecipeCost = 0
       const currentIngredients = ingredients || recipe.ingredients
 
@@ -371,23 +383,26 @@ export class RecipesService {
         })
 
         if (item) {
-          // Normalización: (Cantidad Requerida / Factor de Conversión) * Precio Unitario
-          const factor = item.conversionToBaseQty || 1
-          const qtyInBaseUnit = ing.quantityRequired / factor
-          totalRecipeCost += (item.costPrice || 0) * qtyInBaseUnit
+          // Normalización exacta con decimales en memoria
+          const factor = Number(item.conversionToBaseQty) || 1
+          const qtyInBaseUnit = Number(ing.quantityRequired) / factor
+          totalRecipeCost += (Number(item.costPrice) || 0) * qtyInBaseUnit
         }
       }
 
+      // 6. Redondeo final para el campo int8
+      // Calculamos el costo por unidad. Si totalRecipeCost es decimal,
+      // el Math.round es necesario para que Postgres acepte el int8.
       const newUnitCost = Math.round(
         totalRecipeCost / (yieldQuantity || recipe.yieldQuantity),
       )
 
-      // 6. Sincronizar Ficha del Item
+      // 7. Sincronizar Ficha del Item e invocar efecto dominó
       await queryRunner.manager.update(Item, finalProductId, {
-        costPrice: newUnitCost,
+        costPrice: newUnitCost, // Usamos el nombre de columna del DDL
+        updatedAt: new Date(),
       })
 
-      // 7. Efecto Dominó: Actualizar costos de productos que usan este item como ingrediente
       await this.syncRecipeCostsByIngredient(
         userId,
         finalProductId,
@@ -412,13 +427,13 @@ export class RecipesService {
   // ): Promise<Recipe> {
   //   const { id, ingredients, yieldQuantity } = updateRecipeInput
 
-  //   // 1. Verificar que la receta existe
+  //   // 1. Verificar existencia
   //   const recipe = await this.findOne(id, userId)
   //   if (!recipe) throw new NotFoundException('Receta no encontrada.')
 
   //   const finalProductId = recipe.finalProductId
 
-  //   // 2. Si vienen ingredientes nuevos, validar circularidad profunda
+  //   // 2. Validar Circularidad si se cambian ingredientes
   //   if (ingredients) {
   //     const ingredientIds = ingredients.map((ing) => ing.ingredientItemId)
   //     await this.checkForCircularDependency(
@@ -433,17 +448,12 @@ export class RecipesService {
   //   await queryRunner.startTransaction()
 
   //   try {
-  //     // 3. Actualizar datos básicos de la receta
-  //     if (yieldQuantity) {
-  //       recipe.yieldQuantity = yieldQuantity
-  //     }
+  //     // 3. Actualizar datos de la receta
+  //     if (yieldQuantity) recipe.yieldQuantity = yieldQuantity
 
-  //     // 4. Si hay nuevos ingredientes, reemplazamos los anteriores
+  //     // 4. Reemplazo de ingredientes (Lógica manual para asegurar integridad)
   //     if (ingredients) {
-  //       // Borramos los RecipeIngredients actuales (la relación es cascade: true normalmente,
-  //       // pero aquí los reemplazamos manualmente para asegurar consistencia)
   //       await queryRunner.manager.delete('recipe_ingredients', { recipeId: id })
-
   //       recipe.ingredients = ingredients.map((ing) => ({
   //         ingredientItemId: ing.ingredientItemId,
   //         quantityRequired: ing.quantityRequired,
@@ -452,38 +462,38 @@ export class RecipesService {
   //       })) as RecipeIngredient[]
   //     }
 
-  //     // 5. Recalcular Costo (usamos la misma lógica del create)
+  //     // 5. Recalcular Costo Teórico con Normalización
   //     let totalRecipeCost = 0
   //     const currentIngredients = ingredients || recipe.ingredients
 
   //     for (const ing of currentIngredients) {
-  //       const ingredientItem = await queryRunner.manager.findOne(Item, {
+  //       const item = await queryRunner.manager.findOne(Item, {
   //         where: { id: ing.ingredientItemId, userId },
   //       })
-  //       if (ingredientItem) {
-  //         totalRecipeCost +=
-  //           (ingredientItem.costPrice || 0) * ing.quantityRequired
+
+  //       if (item) {
+  //         // Normalización: (Cantidad Requerida / Factor de Conversión) * Precio Unitario
+  //         const factor = item.conversionToBaseQty || 1
+  //         const qtyInBaseUnit = ing.quantityRequired / factor
+  //         totalRecipeCost += (item.costPrice || 0) * qtyInBaseUnit
   //       }
   //     }
 
-  //     const newUnitCost = Number(
-  //       (totalRecipeCost / (yieldQuantity || recipe.yieldQuantity)).toFixed(2),
+  //     const newUnitCost = Math.round(
+  //       totalRecipeCost / (yieldQuantity || recipe.yieldQuantity),
   //     )
 
-  //     // 6. Actualizar el costo en la ficha del Item
+  //     // 6. Sincronizar Ficha del Item
   //     await queryRunner.manager.update(Item, finalProductId, {
   //       costPrice: newUnitCost,
   //     })
 
-  //     // --- 🚀 ESTA ES LA LÍNEA A AGREGAR ---
-  //     // Como el costo de este producto cambió (porque editamos su receta),
-  //     // avisamos a todas las recetas que lo usan como ingrediente para que se actualicen.
+  //     // 7. Efecto Dominó: Actualizar costos de productos que usan este item como ingrediente
   //     await this.syncRecipeCostsByIngredient(
   //       userId,
   //       finalProductId,
   //       queryRunner,
   //     )
-  //     // -------------------------------------
 
   //     await queryRunner.commitTransaction()
 

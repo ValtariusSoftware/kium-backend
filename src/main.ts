@@ -48,19 +48,20 @@ Token leído de DataStore (Inicio): 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdW
 
 
 
-REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzc0MzY1NDUyLCJleHAiOjE3NzQ5NzAyNTJ9.AKJia8QnSrvPDyEgeAkEceLEnoZoeMSX7SZcwvP5opc
+REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzc2MDEwNzkxLCJleHAiOjE3NzY2MTU1OTF9.gQXiOINCLJ2dKVPw7jnKw2GzVtEfYBVG9H1CKXANXjo
 
 {
-  "createItemInput": {
-    "name": "Cerveza Artesanal IPA 500ml",
-    "costPrice": 1200.50,
-    "salePrice": 2500.00,
-    "stock": 5.0,
-    "minStockAlert": 10.0,
-    "sku": "BEER-IPA-001",
-    "barcode": "7791234567890",
-    "baseUnit": "UNIDAD",
-    "conversionToBaseQty": 1.0
+  "input": {
+    "finalProductId": "uuid-del-padre",
+    "yieldQuantity": 10.0,
+    "ingredients": [
+      {
+        "ingredientItemId": "uuid-ingrediente-1",
+        "quantityRequired": 2.5,
+        "unitOfMeasure": "kg",
+        "notes": "Opcional"
+      }
+    ]
   }
 }
 
