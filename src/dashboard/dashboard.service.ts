@@ -265,28 +265,29 @@ export class DashboardService {
 
     // 1. CÁLCULO DE FINANZAS (Optimizado en SQL)
     // Delegamos la suma a la DB para evitar traer miles de filas a memoria.
+    // 1. CÁLCULO DE FINANZAS (Optimizado en SQL)
     const financials = await this.transRepo
       .createQueryBuilder('t')
       .leftJoin('t.sale', 'sale')
       .select(
         `SUM(CASE 
-          WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot 
-          WHEN t.type = 'RETURN_FROM_SALE' THEN -ABS(t.quantity) * t.salePriceSnapshot 
-          ELSE 0 END)`,
+    WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot 
+    WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.salePriceSnapshot 
+    ELSE 0 END)`,
         'revenue',
       )
       .addSelect(
         `SUM(CASE 
-          WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unit_cost_snapshot 
-          WHEN t.type = 'RETURN_FROM_SALE' THEN -ABS(t.quantity) * t.unit_cost_snapshot 
-          WHEN t.type IN ('CONSUMPTION', 'PRODUCTION_OUT') THEN ABS(t.quantity) * t.unit_cost_snapshot 
-          ELSE 0 END)`,
+    WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unit_cost_snapshot 
+    WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.unit_cost_snapshot 
+    WHEN t.type IN ('CONSUMPTION', 'PRODUCTION_OUT') THEN ABS(t.quantity) * t.unit_cost_snapshot 
+    ELSE 0 END)`,
         'cost',
       )
       .addSelect(
         `SUM(CASE 
-          WHEN t.type = 'ADJUSTMENT_OUT' THEN ABS(t.quantity) * t.unit_cost_snapshot 
-          ELSE 0 END)`,
+    WHEN t.type = 'ADJUSTMENT_OUT' THEN ABS(t.quantity) * t.unit_cost_snapshot 
+    ELSE 0 END)`,
         'losses',
       )
       .where('t.userId = :userId', { userId })

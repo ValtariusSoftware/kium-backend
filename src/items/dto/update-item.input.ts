@@ -1,5 +1,5 @@
 import { InputType, Field, ID, Float } from '@nestjs/graphql'
-import { IsNumber, IsOptional, IsUUID, Min } from 'class-validator'
+import { IsEnum, IsNumber, IsOptional, IsUUID, Min } from 'class-validator'
 import { BaseUnit } from '../entities/item.entity'
 import { Transform } from 'class-transformer'
 
@@ -68,11 +68,14 @@ export class ReconfigureItemInput {
   id: string
 
   @Field(() => BaseUnit) // Aquí suelen ser obligatorios porque definen la nueva estructura
+  @IsEnum(BaseUnit)
   baseUnit: BaseUnit
 
   @Field(() => BaseUnit)
+  @IsEnum(BaseUnit)
   purchaseUnit: BaseUnit
 
   @Field(() => Float)
+  @IsNumber()
   conversionToBaseQty: number
 }

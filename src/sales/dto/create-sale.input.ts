@@ -1,7 +1,16 @@
 // sales/dto/create-sale.input.ts (Se mantiene igual)
 import { InputType, Field, Float } from '@nestjs/graphql'
 import { Transform } from 'class-transformer'
-import { IsArray, IsUUID, IsNumber, Min, IsOptional } from 'class-validator'
+import {
+  IsArray,
+  IsUUID,
+  IsNumber,
+  Min,
+  IsOptional,
+  IsString,
+  IsEnum,
+} from 'class-validator'
+import { PaymentMethod } from '../entities/sale.entity'
 
 @InputType()
 export class SaleItemInput {
@@ -39,8 +48,11 @@ export class CreateSaleInput {
   items: SaleItemInput[]
 
   @Field(() => String, { defaultValue: 'CASH' })
+  @IsEnum(PaymentMethod)
   paymentMethod: string
 
   @Field({ nullable: true })
+  @IsOptional()
+  @IsString()
   notes?: string
 }

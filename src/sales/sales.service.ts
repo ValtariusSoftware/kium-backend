@@ -29,6 +29,8 @@ export class SalesService {
       const newSale = queryRunner.manager.create(Sale, {
         userId,
         totalAmount: 0,
+        paymentMethod: input.paymentMethod,
+        notes: input.notes,
       })
       const savedSale = await queryRunner.manager.save(newSale)
 
