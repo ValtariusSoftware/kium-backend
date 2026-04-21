@@ -145,6 +145,17 @@ export class InventoryTransactionsService {
         }
       }
 
+      const updateData: any = {}
+
+      if (!item.isInitialized) {
+        updateData.isInitialized = true
+      }
+
+      // Si hay algo que actualizar (isInitialized), lo hacemos.
+      if (Object.keys(updateData).length > 0) {
+        await runner.manager.update(Item, item.id, updateData)
+      }
+
       // --- 5. ACTUALIZAR STOCK FÍSICO ---
       await runner.manager.increment(
         Item,
