@@ -204,4 +204,8 @@ export class Item {
   @Column({ name: 'is_verified', type: 'boolean', default: true })
   @Field(() => Boolean)
   isVerified: boolean
+
+  @Column({ name: 'is_initialized', type: 'boolean', default: false })
+  @Field(() => Boolean)
+  isInitialized: boolean
 }

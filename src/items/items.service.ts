@@ -154,6 +154,8 @@ export class ItemsService {
         salePrice: cleanSalePrice, // Guardamos el entero (centavos)
         stock: 0.0, // Stock inicial siempre 0 para auditar vía movimiento
         userId,
+        // 💡 Lógica nueva: si trae stock inicial, nace inicializado
+        isInitialized: initialStock > 0,
       }
 
       // 3. Creación y Guardado
@@ -420,6 +422,7 @@ export class ItemsService {
           salePrice: cleanSale,
           stock: 0,
           userId,
+          isInitialized: (input.stock || 0) > 0,
         })
 
         const savedItem = await queryRunner.manager.save(newItem)

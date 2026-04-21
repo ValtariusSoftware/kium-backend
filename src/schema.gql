@@ -75,6 +75,7 @@ type Item {
   isIngredient: Boolean!
   parentId: ID
   isVerified: Boolean!
+  isInitialized: Boolean!
   canProduceQuantity: Float!
   totalAvailableStock: Float!
   hasOperationalHistory: Boolean!
@@ -414,7 +415,7 @@ input UpdateRecipeInput {
 
 input CreateItemInput {
   name: String!
-  stock: Float!
+  stock: Float = 0
   baseUnit: BaseUnit!
   conversionToBaseQty: Float!
   minStockAlert: Float
@@ -422,6 +423,7 @@ input CreateItemInput {
   salePrice: Float
   barcode: String
   sku: String
+  isInitialized: Boolean = false
 }
 
 input UpdateItemInput {

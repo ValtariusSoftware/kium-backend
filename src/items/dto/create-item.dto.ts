@@ -17,10 +17,20 @@ export class CreateItemInput {
   @IsString()
   name: string
 
-  @Field(() => Float)
+  // @Field(() => Float)
+  // @IsNumber()
+  // @Min(0)
+  // @Transform(({ value }) => Number(parseFloat(value).toFixed(4))) // 👈 Limpieza a 4 decimales
+  // stock: number
+
+  @Field(() => Float, { nullable: true, defaultValue: 0 }) // En GraphQL es opcional
+  @IsOptional() // class-validator permite que no venga
   @IsNumber()
   @Min(0)
-  @Transform(({ value }) => Number(parseFloat(value).toFixed(4))) // 👈 Limpieza a 4 decimales
+  @Transform(({ value }) => {
+    if (value === null || value === undefined) return 0 // Si no viene, forzamos 0
+    return Number(parseFloat(value).toFixed(4))
+  })
   stock: number
 
   @Field(() => BaseUnit)
@@ -83,6 +93,10 @@ export class CreateItemInput {
   @IsOptional()
   @IsString()
   sku?: string
+
+  @Field(() => Boolean, { nullable: true, defaultValue: false })
+  @IsOptional()
+  isInitialized?: boolean
 }
 
 @ObjectType()
