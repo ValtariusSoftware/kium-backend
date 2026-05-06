@@ -9,6 +9,7 @@ import {
 } from 'class-validator'
 import { Transform } from 'class-transformer'
 import { BaseUnit, Item } from '../entities/item.entity'
+import { ProductType } from '../enums/product-type'
 
 @InputType()
 export class CreateItemInput {
@@ -97,6 +98,11 @@ export class CreateItemInput {
   @Field(() => Boolean, { nullable: true, defaultValue: false })
   @IsOptional()
   isInitialized?: boolean
+
+  @Field(() => String, { nullable: true, defaultValue: ProductType.RESALE })
+  @IsOptional()
+  @IsEnum(ProductType)
+  productType?: ProductType
 }
 
 @ObjectType()

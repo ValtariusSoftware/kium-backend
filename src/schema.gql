@@ -424,6 +424,7 @@ input CreateItemInput {
   barcode: String
   sku: String
   isInitialized: Boolean = false
+  productType: String = "RESALE"
 }
 
 input UpdateItemInput {

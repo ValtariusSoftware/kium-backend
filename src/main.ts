@@ -48,7 +48,7 @@ Token leído de DataStore (Inicio): 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdW
 
 
 
-REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzc2MTc0MzE2LCJleHAiOjE3NzY3NzkxMTZ9.jLLlgzFu3M5pIc22WFHAvzZ5wwL5YL-vLEANyAYlUos
+REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzc4MDk3OTg4LCJleHAiOjE3Nzg3MDI3ODh9.fP-ucxQXptKr3xPT-3Ai1NYT7YA4GCAbONtD38x7ChM
 
 {
   "input": {
@@ -81,5 +81,6 @@ REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFz
 
 Carga masiva para usuarios de mas de x productos, cual podria ser el limite? darles una pequeña prueba a usuarios free.
 Debatir la creacion del excel quizas en un solo excel se podria armar el producto final ingredientes y cantidades.
+
 
 */
