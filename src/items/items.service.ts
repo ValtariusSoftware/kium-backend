@@ -32,6 +32,7 @@ import { PaginationInput } from 'src/common/dto/pagination.input'
 import { ItemErrorCode } from './enums/item-error-code.enum'
 import { RecipeIngredient } from 'src/recipes/entities/recipe-ingredient.entity'
 import { Recipe } from 'src/recipes/entities/recipe.entity'
+import { ProductType } from './enums/product-type'
 
 interface DatabaseError extends Error {
   code?: string
@@ -63,32 +64,78 @@ export class ItemsService {
    * @param salePrice Precio de venta actual o nuevo
    * @param currentItem (Opcional) Estado actual del ítem en DB para no pisar flags de recetas
    */
-  private calculateItemRoles(
-    costPrice: number | null | undefined,
-    salePrice: number | null | undefined,
-    currentItem?: Item,
-  ) {
-    const hasCost = !!costPrice && costPrice > 0
+  // private calculateItemRoles(
+  //   costPrice: number | null | undefined,
+  //   salePrice: number | null | undefined,
+  //   currentItem?: Item,
+  // ) {
+  //   const hasCost = !!costPrice && costPrice > 0
+  //   const hasSale = !!salePrice && salePrice > 0
+
+  //   // Si el ítem ya existe, mantenemos sus flags de "Receta" actuales.
+  //   // Si es nuevo, hacemos una inferencia inicial.
+  //   // const isIngredient = currentItem
+  //   //   ? currentItem.isIngredient
+  //   //   : hasCost && !hasSale
+  //   // Si tiene costo, PUEDE ser un ingrediente (no importa si también se vende)
+  //   const isIngredient = currentItem ? currentItem.isIngredient : hasCost
+
+  //   const isProduced = currentItem
+  //     ? currentItem.isProduced
+  //     : hasSale && !hasCost
+
+  //   return {
+  //     isSaleable: hasSale,
+  //     isPurchasable: !isProduced, // Solo se puede "comprar" si no es algo que fabricamos
+  //     isIngredient,
+  //     isProduced,
+  //   }
+  // }
+
+  private calculateItemRoles(input: CreateItemInput, currentItem?: Item) {
+    // Si no viene productType, usamos RESALE por defecto
+    const {
+      // costPrice,
+      salePrice,
+      productType = ProductType.RESALE,
+    } = input
+    // const hasCost = !!costPrice && costPrice > 0
     const hasSale = !!salePrice && salePrice > 0
 
-    // Si el ítem ya existe, mantenemos sus flags de "Receta" actuales.
-    // Si es nuevo, hacemos una inferencia inicial.
-    const isIngredient = currentItem
-      ? currentItem.isIngredient
-      : hasCost && !hasSale
+    // BLOQUEO DE SEGURIDAD: Si el ítem ya existe, NO recalculamos roles basados en tipo.
+    // Solo actualizamos si es vendible o no basado en el precio de venta.
+    if (currentItem) {
+      return {
+        isSaleable: hasSale, // Esto puede cambiar (dejas de venderlo o empezas a venderlo)
+        isPurchasable: currentItem.isPurchasable, // SE MANTIENE
+        isIngredient: currentItem.isIngredient, // SE MANTIENE
+        isProduced: currentItem.isProduced, // SE MANTIENE
+      }
+    }
 
-    const isProduced = currentItem
-      ? currentItem.isProduced
-      : hasSale && !hasCost
-
+    // Lógica para ítems NUEVOS (donde sí definimos la naturaleza por primera vez)
     return {
-      isSaleable: hasSale,
-      isPurchasable: !isProduced, // Solo se puede "comprar" si no es algo que fabricamos
-      isIngredient,
-      isProduced,
+      isSaleable: [
+        ProductType.RESALE,
+        ProductType.PRODUCED_FINAL,
+        ProductType.HYBRID,
+      ].includes(productType),
+      isProduced: [
+        ProductType.PRODUCED_FINAL,
+        ProductType.PRODUCED_INGREDIENT,
+      ].includes(productType),
+      isPurchasable: [
+        ProductType.RESALE,
+        ProductType.PURCHASED_INGREDIENT,
+        ProductType.HYBRID,
+      ].includes(productType),
+      isIngredient: [
+        ProductType.PURCHASED_INGREDIENT,
+        ProductType.PRODUCED_INGREDIENT,
+        ProductType.HYBRID,
+      ].includes(productType),
     }
   }
-
   /**
    * Captura errores específicos de la base de datos (Postgres)
    * y los transforma en excepciones amigables para el usuario.
@@ -143,7 +190,8 @@ export class ItemsService {
       const cleanSalePrice = Math.round(createItemInput.salePrice || 0)
 
       // 3. Inferencia de Roles basada en los precios sanitizados
-      const roles = this.calculateItemRoles(cleanCostPrice, cleanSalePrice)
+      // const roles = this.calculateItemRoles(cleanCostPrice, cleanSalePrice)
+      const roles = this.calculateItemRoles(createItemInput)
 
       const initialStock = createItemInput.stock || 0.0
 
@@ -338,11 +386,13 @@ export class ItemsService {
     // 1. Sanitizar SOLO el precio de venta (si viene)
     if (updateData.salePrice !== undefined) {
       updateData.salePrice = Math.round(updateData.salePrice || 0)
-      const newRoles = this.calculateItemRoles(
-        item.costPrice,
-        updateData.salePrice,
-        item,
-      )
+
+      const fakeInput: any = {
+        salePrice: updateData.salePrice,
+        costPrice: item.costPrice, // Usamos el costo que ya tenía
+      }
+
+      const newRoles = this.calculateItemRoles(fakeInput, item)
       Object.assign(item, newRoles)
     }
 
@@ -413,8 +463,8 @@ export class ItemsService {
         const cleanCost = Math.round(input.costPrice || 0)
         const cleanSale = Math.round(input.salePrice || 0)
 
-        const roles = this.calculateItemRoles(cleanCost, cleanSale)
-
+        // const roles = this.calculateItemRoles(cleanCost, cleanSale)
+        const roles = this.calculateItemRoles(input)
         const newItem = queryRunner.manager.create(Item, {
           ...input,
           ...roles,
@@ -434,7 +484,8 @@ export class ItemsService {
               itemId: savedItem.id,
               type: TransactionType.INITIAL_INVENTORY,
               quantity: input.stock,
-              unitCostSnapshot: input.costPrice || 0,
+              // unitCostSnapshot: input.costPrice || 0,
+              unitCostSnapshot: cleanCost,
               documentRef: 'BULK_LOAD',
               notes: 'Carga masiva inicial.',
             },
@@ -641,12 +692,12 @@ export class ItemsService {
         if (input.salePrice !== undefined) {
           input.salePrice = Math.round(input.salePrice || 0) // Convertir a centavos limpios
 
-          // Recalcular roles usando el costo ACTUAL (item.costPrice ya es number por el transformer)
-          const newRoles = this.calculateItemRoles(
-            item.costPrice,
-            input.salePrice,
-            item,
-          )
+          const fakeInput: any = {
+            salePrice: input.salePrice,
+            costPrice: item.costPrice,
+          }
+
+          const newRoles = this.calculateItemRoles(fakeInput, item)
           Object.assign(item, newRoles)
         }
 
