@@ -1,4 +1,5 @@
 import { ApolloDriverConfig } from '@nestjs/apollo'
+import { JSONResolver } from 'graphql-scalars'
 import { join } from 'path'
 import { ApolloServerPluginLandingPageLocalDefault } from '@apollo/server/plugin/landingPage/default'
 import { ConfigService } from '@nestjs/config'
@@ -16,6 +17,7 @@ export const graphqlConfig = (
     process.cwd(),
     configService.get<string>('graphqlSchema', 'src/schema.gql'),
   ),
+  resolvers: { JSON: JSONResolver },
   playground: false,
   introspection: true,
   formatError: (error) => {

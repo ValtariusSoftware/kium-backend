@@ -23,6 +23,7 @@ import { ProductionModule } from './production/production.module'
 import { ItemsService } from './items/items.service'
 import { AppController } from './app.controller'
 // 🚨 ELIMINAR ESTA LÍNEA -> import { JwtStrategy } from './auth/strategies/jwt.strategy'
+import { SubscriptionsModule } from './subscriptions/subscriptions.module'
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { AppController } from './app.controller'
     InventoryTransactionsModule,
     SalesModule,
     DashboardModule,
+    SubscriptionsModule,
   ],
   controllers: [AppController],
   providers: [
