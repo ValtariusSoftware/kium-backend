@@ -64,37 +64,7 @@ export class RecipesService {
       }
     }
   }
-  // private async checkForCircularDependency(
-  //   targetId: string,
-  //   currentIngredients: string[],
-  //   userId: string,
-  // ): Promise<void> {
-  //   for (const ingredientId of currentIngredients) {
-  //     // Si el ingrediente es el mismo producto que estamos creando -> CIRCULAR
-  //     if (ingredientId === targetId) {
-  //       throw new BadRequestException(
-  //         'Dependencia circular detectada: un ingrediente no puede depender del producto final en ningún nivel.',
-  //       )
-  //     }
 
-  //     // Buscamos si este ingrediente tiene su propia receta
-  //     const recipe = await this.recipesRepository.findOne({
-  //       where: { finalProductId: ingredientId, userId },
-  //       relations: ['ingredients'],
-  //     })
-
-  //     // Si tiene receta, revisamos sus ingredientes (recursión)
-  //     if (recipe && recipe.ingredients.length > 0) {
-  //       const nextLevelIds = recipe.ingredients.map((i) => i.ingredientItemId)
-  //       await this.checkForCircularDependency(targetId, nextLevelIds, userId)
-  //     }
-  //   }
-  // }
-
-  /**
-   * Crea una nueva receta e infiere los roles de producción para los ítems involucrados.
-   * También calcula el costo unitario del producto final basado en sus ingredientes.
-   */
   /**
    * Crea una nueva receta e infiere los roles de producción para los ítems involucrados.
    * Aplica normalización de unidades para el cálculo de costos y validación circular.
@@ -104,6 +74,13 @@ export class RecipesService {
     createRecipeInput: CreateRecipeInput,
   ): Promise<Recipe> {
     const { finalProductId, ingredients, yieldQuantity } = createRecipeInput
+
+    // 🔍 LOG 1: Entrada de datos
+    console.log('--- INICIO CREATE RECIPE ---')
+    console.log(
+      `Producto Final ID: ${finalProductId} | Rinde: ${yieldQuantity}`,
+    )
+    console.log(`Ingredientes Recibidos:`, JSON.stringify(ingredients, null, 2))
 
     // 1. Obtener IDs de ingredientes para validaciones masivas
     const ingredientIds = ingredients.map((ing) => ing.ingredientItemId)
@@ -177,10 +154,26 @@ export class RecipesService {
         const quantityInBaseUnit = ing.quantityRequired / factor
 
         totalRecipeCost += (ingredientItem.costPrice || 0) * quantityInBaseUnit
+
+        // ✅ LOG 2: Ahora sí está adentro del bucle y reconoce las variables
+        console.log(`> Ingrediente: ${ingredientItem.name}`)
+        console.log(`  - Costo Base (DB): ${ingredientItem.costPrice}`)
+        console.log(
+          `  - Cant. Solicitada: ${ing.quantityRequired} | Factor Conv: ${factor}`,
+        )
+        //  console.log(`  - Costo Proporcional: ${partialCost}`)
       }
 
       // Redondeamos el costo unitario final (en centavos enteros)
       const calculatedUnitCost = Math.round(totalRecipeCost / yieldQuantity)
+
+      // 🔍 LOG 3: Resultado Final
+      console.log(`--- CÁLCULO FINAL ---`)
+      console.log(`Costo Total Acumulado: ${totalRecipeCost}`)
+      console.log(
+        `Costo Unitario Final (guardado en DB): ${calculatedUnitCost}`,
+      )
+      console.log('----------------------')
 
       // 7. 🚀 ACTUALIZACIÓN MASIVA DE ÍTEMS
       // Sincronizar Ficha del Producto Final
@@ -421,92 +414,6 @@ export class RecipesService {
       await queryRunner.release()
     }
   }
-  // async update(
-  //   userId: string,
-  //   updateRecipeInput: UpdateRecipeInput,
-  // ): Promise<Recipe> {
-  //   const { id, ingredients, yieldQuantity } = updateRecipeInput
-
-  //   // 1. Verificar existencia
-  //   const recipe = await this.findOne(id, userId)
-  //   if (!recipe) throw new NotFoundException('Receta no encontrada.')
-
-  //   const finalProductId = recipe.finalProductId
-
-  //   // 2. Validar Circularidad si se cambian ingredientes
-  //   if (ingredients) {
-  //     const ingredientIds = ingredients.map((ing) => ing.ingredientItemId)
-  //     await this.checkForCircularDependency(
-  //       finalProductId,
-  //       ingredientIds,
-  //       userId,
-  //     )
-  //   }
-
-  //   const queryRunner = this.dataSource.createQueryRunner()
-  //   await queryRunner.connect()
-  //   await queryRunner.startTransaction()
-
-  //   try {
-  //     // 3. Actualizar datos de la receta
-  //     if (yieldQuantity) recipe.yieldQuantity = yieldQuantity
-
-  //     // 4. Reemplazo de ingredientes (Lógica manual para asegurar integridad)
-  //     if (ingredients) {
-  //       await queryRunner.manager.delete('recipe_ingredients', { recipeId: id })
-  //       recipe.ingredients = ingredients.map((ing) => ({
-  //         ingredientItemId: ing.ingredientItemId,
-  //         quantityRequired: ing.quantityRequired,
-  //         unitOfMeasure: ing.unitOfMeasure,
-  //         notes: ing.notes,
-  //       })) as RecipeIngredient[]
-  //     }
-
-  //     // 5. Recalcular Costo Teórico con Normalización
-  //     let totalRecipeCost = 0
-  //     const currentIngredients = ingredients || recipe.ingredients
-
-  //     for (const ing of currentIngredients) {
-  //       const item = await queryRunner.manager.findOne(Item, {
-  //         where: { id: ing.ingredientItemId, userId },
-  //       })
-
-  //       if (item) {
-  //         // Normalización: (Cantidad Requerida / Factor de Conversión) * Precio Unitario
-  //         const factor = item.conversionToBaseQty || 1
-  //         const qtyInBaseUnit = ing.quantityRequired / factor
-  //         totalRecipeCost += (item.costPrice || 0) * qtyInBaseUnit
-  //       }
-  //     }
-
-  //     const newUnitCost = Math.round(
-  //       totalRecipeCost / (yieldQuantity || recipe.yieldQuantity),
-  //     )
-
-  //     // 6. Sincronizar Ficha del Item
-  //     await queryRunner.manager.update(Item, finalProductId, {
-  //       costPrice: newUnitCost,
-  //     })
-
-  //     // 7. Efecto Dominó: Actualizar costos de productos que usan este item como ingrediente
-  //     await this.syncRecipeCostsByIngredient(
-  //       userId,
-  //       finalProductId,
-  //       queryRunner,
-  //     )
-
-  //     await queryRunner.commitTransaction()
-
-  //     const result = await this.findOne(id, userId)
-  //     if (!result) throw new Error('Error al recuperar la receta actualizada.')
-  //     return result
-  //   } catch (err) {
-  //     await queryRunner.rollbackTransaction()
-  //     throw err
-  //   } finally {
-  //     await queryRunner.release()
-  //   }
-  // }
 
   /**
    * Elimina una receta y actualiza los flags de los ítems involucrados.
@@ -723,46 +630,6 @@ export class RecipesService {
 
     return minPossible === Infinity ? 0 : minPossible
   }
-  // runVirtualStockMath(recipe: any): number {
-  //   if (!recipe || !recipe.ingredients || recipe.ingredients.length === 0)
-  //     return 0
-
-  //   let minPossible = Infinity
-
-  //   // Aseguramos que el rendimiento de la receta no sea 0 para no romper la división
-  //   const recipeYield = Number(recipe.yieldQuantity) || 1
-
-  //   for (const ingredient of recipe.ingredients) {
-  //     // 1. Validar que el objeto del ítem existe (evita crash si el loader falló)
-  //     if (!ingredient.ingredientItem) continue
-
-  //     const stockAvailable = Number(ingredient.ingredientItem.stock) || 0
-
-  //     // 2. Seguridad: Evitar división por cero en la conversión
-  //     const conversion =
-  //       Number(ingredient.ingredientItem.conversionToBaseQty) || 1
-
-  //     // 3. Calcular cantidad necesaria para 1 unidad final
-  //     // qtyRequired / rendimiento / conversion
-  //     const qtyNeededPerUnit =
-  //       ingredient.quantityRequired / recipeYield / conversion
-
-  //     // 4. Solo procesamos si la cantidad necesaria es válida y mayor a cero
-  //     if (qtyNeededPerUnit > 0) {
-  //       const possibleWithThisIng = Math.floor(
-  //         stockAvailable / qtyNeededPerUnit,
-  //       )
-
-  //       // El ingrediente con MENOR capacidad es el limitante (cuello de botella)
-  //       if (possibleWithThisIng < minPossible) {
-  //         minPossible = possibleWithThisIng
-  //       }
-  //     }
-  //   }
-
-  //   // Si nunca entró al loop o todos eran Infinity, devolvemos 0
-  //   return minPossible === Infinity ? 0 : minPossible
-  // }
 
   /**
    * Calcula cuánto se puede producir de un ítem basado en sus insumos actuales.
@@ -796,44 +663,6 @@ export class RecipesService {
 
     return minPossible === Infinity ? 0 : minPossible
   }
-  // async calculateVirtualStock(userId: string, item: Item): Promise<number> {
-  //   // 1. Si el ítem no tiene el flag de producción activado, no calculamos nada.
-  //   if (!item.isProduced) return 0
-
-  //   // 2. Buscamos la receta vinculada
-  //   const recipe = await this.findByFinalProductId(item.id, userId)
-
-  //   // 3. Si no tiene receta cargada o no tiene ingredientes, el stock virtual es 0
-  //   if (!recipe || !recipe.ingredients || recipe.ingredients.length === 0)
-  //     return 0
-
-  //   let minPossible = Infinity
-
-  //   for (const ingredient of recipe.ingredients) {
-  //     // Aseguramos el casteo a número por la naturaleza del tipo numeric en Postgres
-  //     const stockAvailable = Number(ingredient.ingredientItem.stock)
-
-  //     // Cantidad de ingrediente necesaria para 1 unidad de producto final
-  //     // (Factorizando rendimiento de receta y conversión de unidad del ingrediente)
-  //     const qtyNeededPerUnit =
-  //       ingredient.quantityRequired /
-  //       recipe.yieldQuantity /
-  //       ingredient.ingredientItem.conversionToBaseQty
-
-  //     if (qtyNeededPerUnit > 0) {
-  //       const possibleWithThisIng = Math.floor(
-  //         stockAvailable / qtyNeededPerUnit,
-  //       )
-
-  //       // El ingrediente con MENOR capacidad es el limitante (cuello de botella)
-  //       if (possibleWithThisIng < minPossible) {
-  //         minPossible = possibleWithThisIng
-  //       }
-  //     }
-  //   }
-
-  //   return minPossible === Infinity ? 0 : minPossible
-  // }
 
   async syncRecipeCostsByIngredient(
     userId: string,
@@ -872,45 +701,4 @@ export class RecipesService {
       )
     }
   }
-
-  // async syncRecipeCostsByIngredient(
-  //   userId: string,
-  //   ingredientId: string,
-  //   externalRunner: QueryRunner,
-  // ): Promise<void> {
-  //   // 1. Buscamos todas las recetas que usan este ingrediente
-  //   // Importante: Cargamos 'ingredients' y sus ítems para tener los costos actuales de los OTROS componentes
-  //   const recipesUsingItem = await externalRunner.manager.find(Recipe, {
-  //     where: { ingredients: { ingredientItemId: ingredientId }, userId },
-  //     relations: ['ingredients', 'ingredients.ingredientItem'],
-  //   })
-
-  //   for (const recipe of recipesUsingItem) {
-  //     let totalRecipeCost = 0
-
-  //     for (const ing of recipe.ingredients) {
-  //       // Usamos el costo del ítem (que ya debe estar actualizado en la DB en este punto)
-  //       // Ojo: Si el ing.ingredientItem es el que acaba de cambiar, el runner ya tiene el dato fresco
-  //       const cost = Number(ing.ingredientItem.costPrice) || 0
-  //       totalRecipeCost += cost * ing.quantityRequired
-  //     }
-
-  //     const newUnitCost = Number(
-  //       (totalRecipeCost / recipe.yieldQuantity).toFixed(2),
-  //     )
-
-  //     // 2. Actualizamos el costo del producto final de la receta
-  //     await externalRunner.manager.update(Item, recipe.finalProductId, {
-  //       costPrice: newUnitCost,
-  //     })
-
-  //     // 3. RECURSIÓN: Si este producto final es a su vez ingrediente de OTRA receta,
-  //     // debemos disparar el mismo proceso para esa otra receta (Efecto dominó)
-  //     await this.syncRecipeCostsByIngredient(
-  //       userId,
-  //       recipe.finalProductId,
-  //       externalRunner,
-  //     )
-  //   }
-  // }
 }

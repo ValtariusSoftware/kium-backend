@@ -5,13 +5,19 @@ import { CreateSaleInput } from './dto/create-sale.input'
 import { Between, DataSource, MoreThanOrEqual, Repository } from 'typeorm'
 import { Sale } from './entities/sale.entity'
 import { InventoryTransactionsService } from 'src/inventory-transactions/inventory-transactions.service'
-import { Injectable, NotFoundException } from '@nestjs/common'
+import {
+  BadRequestException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { PaginationInput } from 'src/common/dto/pagination.input'
 import { PaginatedSales } from './dto/paginated-sales.output'
+import { ItemErrorCode } from 'src/items/enums/item-error-code.enum'
 
 @Injectable()
 export class SalesService {
+  private readonly MAX_SALE_ITEMS = 100
   constructor(
     @InjectRepository(Sale)
     private readonly salesRepository: Repository<Sale>,
@@ -20,6 +26,10 @@ export class SalesService {
   ) {}
 
   async createSale(userId: string, input: CreateSaleInput): Promise<Sale> {
+    if (input.items.length > this.MAX_SALE_ITEMS) {
+      throw new BadRequestException(ItemErrorCode.BATCH_LIMIT_EXCEEDED)
+    }
+
     const queryRunner = this.dataSource.createQueryRunner()
     await queryRunner.connect()
     await queryRunner.startTransaction()
