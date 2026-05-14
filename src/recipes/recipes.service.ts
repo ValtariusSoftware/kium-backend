@@ -14,6 +14,7 @@ import { Item } from 'src/items/entities/item.entity'
 import { UpdateRecipeInput } from './dto/update-recipe.dto'
 import { RecipeIngredient } from './entities/recipe-ingredient.entity'
 import { PaginationInput } from 'src/common/dto/pagination.input'
+import { getUnitConversionFactor } from 'src/common/logic/unit-conversion.logic'
 
 @Injectable()
 export class RecipesService {
@@ -150,18 +151,45 @@ export class RecipesService {
          * y la receta pide 500g, debemos dividir por el factor de conversión
          * para obtener la proporción real del costo.
          */
-        const factor = ingredientItem.conversionToBaseQty || 1
-        const quantityInBaseUnit = ing.quantityRequired / factor
+        // const factor = ingredientItem.conversionToBaseQty || 1
+        // const quantityInBaseUnit = ing.quantityRequired / factor
 
-        totalRecipeCost += (ingredientItem.costPrice || 0) * quantityInBaseUnit
+        // totalRecipeCost += (ingredientItem.costPrice || 0) * quantityInBaseUnit
 
-        // ✅ LOG 2: Ahora sí está adentro del bucle y reconoce las variables
-        console.log(`> Ingrediente: ${ingredientItem.name}`)
-        console.log(`  - Costo Base (DB): ${ingredientItem.costPrice}`)
-        console.log(
-          `  - Cant. Solicitada: ${ing.quantityRequired} | Factor Conv: ${factor}`,
-        )
+        // // ✅ LOG 2: Ahora sí está adentro del bucle y reconoce las variables
+        // console.log(`> Ingrediente: ${ingredientItem.name}`)
+        // console.log(`  - Costo Base (DB): ${ingredientItem.costPrice}`)
+        // console.log(
+        //   `  - Cant. Solicitada: ${ing.quantityRequired} | Factor Conv: ${factor}`,
+        // )
         //  console.log(`  - Costo Proporcional: ${partialCost}`)
+
+        // 🧮 LÓGICA DE CONVERSIÓN CENTRALIZADA
+        // 1. Obtenemos el factor de escala entre unidades (ej: GRAM a KILOGRAM = 1000)
+        const unitScaleFactor = getUnitConversionFactor(
+          ing.unitOfMeasure,
+          ingredientItem.baseUnit,
+        )
+
+        // 2. El factor de empaque del ítem (ej: el ítem se compra por Pack de 6)
+        const packingFactor = ingredientItem.conversionToBaseQty || 1
+
+        /**
+         * La cantidad real en unidad base es:
+         * cantidad_pedida / (escala_unidades * factor_empaque)
+         * Ej: 250g de azúcar (comprada en bolsas de 1kg): 250 / (1000 * 1) = 0.25 unidades base.
+         */
+        const quantityInBaseUnit =
+          ing.quantityRequired / (unitScaleFactor * packingFactor)
+
+        const partialCost = (ingredientItem.costPrice || 0) * quantityInBaseUnit
+        totalRecipeCost += partialCost
+
+        console.log(`> Ingrediente: ${ingredientItem.name}`)
+        console.log(
+          `  - Cant. Real Base: ${quantityInBaseUnit} ${ingredientItem.baseUnit}`,
+        )
+        console.log(`  - Costo Proporcional: ${partialCost}`)
       }
 
       // Redondeamos el costo unitario final (en centavos enteros)
