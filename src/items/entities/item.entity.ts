@@ -17,31 +17,62 @@ import { ColumnNumericTransformer } from 'src/common/transformers/numeric.transf
 
 // --- ENUMS ---
 
+// export enum BaseUnit {
+//   UNIT = 'UNIT',
+//   PACK = 'PACK',
+//   BOX = 'BOX',
+//   ROLL = 'ROLL',
+//   BAG = 'BAG',
+//   PALLET = 'PALLET',
+//   METER = 'METER',
+//   CENTIMETER = 'CENTIMETER',
+//   MILLIMETER = 'MILLIMETER',
+//   FOOT = 'FOOT',
+//   YARD = 'YARD',
+//   SQUARE_METER = 'SQUARE_METER',
+//   KILOGRAM = 'KILOGRAM',
+//   GRAM = 'GRAM',
+//   MILLIGRAM = 'MILLIGRAM',
+//   POUND = 'POUND',
+//   OUNCE = 'OUNCE',
+//   LITER = 'LITER',
+//   MILLILITER = 'MILLILITER',
+//   GALLON = 'GALLON',
+//   FL_OUNCE = 'FL_OUNCE',
+//   CUBIC_METER = 'CUBIC_METER',
+//   HOUR = 'HOUR',
+//   DAY = 'DAY',
+// }
+
 export enum BaseUnit {
+  // --- DISCRETAS (Universales) ---
   UNIT = 'UNIT',
   PACK = 'PACK',
   BOX = 'BOX',
-  ROLL = 'ROLL',
-  BAG = 'BAG',
-  PALLET = 'PALLET',
-  METER = 'METER',
-  CENTIMETER = 'CENTIMETER',
-  MILLIMETER = 'MILLIMETER',
-  FOOT = 'FOOT',
-  YARD = 'YARD',
-  SQUARE_METER = 'SQUARE_METER',
-  KILOGRAM = 'KILOGRAM',
-  GRAM = 'GRAM',
+
+  // --- MASA ---
   MILLIGRAM = 'MILLIGRAM',
-  POUND = 'POUND',
+  GRAM = 'GRAM',
+  KILOGRAM = 'KILOGRAM',
   OUNCE = 'OUNCE',
-  LITER = 'LITER',
+  POUND = 'POUND',
+
+  // --- VOLUMEN ---
   MILLILITER = 'MILLILITER',
-  GALLON = 'GALLON',
+  LITER = 'LITER',
   FL_OUNCE = 'FL_OUNCE',
-  CUBIC_METER = 'CUBIC_METER',
-  HOUR = 'HOUR',
-  DAY = 'DAY',
+  GALLON = 'GALLON',
+
+  // --- LONGITUD ---
+  MILLIMETER = 'MILLIMETER', // ¡Vuelve!
+  CENTIMETER = 'CENTIMETER',
+  METER = 'METER',
+  INCH = 'INCH', // Agregamos pulgada que es básica
+  FOOT = 'FOOT', // Agregamos pie
+
+  // --- SUPERFICIE ---
+  SQUARE_METER = 'SQUARE_METER',
+  SQUARE_FOOT = 'SQUARE_FOOT',
 }
 
 registerEnumType(BaseUnit, { name: 'BaseUnit' })
