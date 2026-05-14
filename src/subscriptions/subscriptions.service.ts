@@ -6,6 +6,7 @@ import { CreateSubscriptionFeatureInput } from './dto/create-subscription-featur
 import { UpdateSubscriptionFeatureInput } from './dto/update-subscription-feature.input'
 import { SubscriptionFeatureTranslation } from './entities/subscription-feature-translation.entity'
 import { SubscriptionFeatureSlug } from './enums/subscription-feature-slug.enum'
+import { AccessLevel } from 'src/users/entities/user.entity'
 
 @Injectable()
 export class SubscriptionsService {
@@ -61,6 +62,30 @@ export class SubscriptionsService {
       .where('feature.isActive = :active', { active: true })
       .orderBy('feature.displayOrder', 'ASC')
       .getMany()
+  }
+
+  private readonly FALLBACK_LIMITS: Record<string, Record<string, number>> = {
+    [SubscriptionFeatureSlug.STOCK_LIMIT]: { FREE: 25, PRO: 1200 },
+    [SubscriptionFeatureSlug.MULTI_PRODUCT_UPDATE]: { FREE: 0, PRO: 100 },
+    [SubscriptionFeatureSlug.MULTI_PRODUCT_DELETION]: { FREE: 0, PRO: 100 },
+    [SubscriptionFeatureSlug.BULK_UPLOAD]: { FREE: 10, PRO: 100 }, // El que usaste como string
+  }
+
+  async getLimit(slug: string, accessLevel: AccessLevel): Promise<number> {
+    try {
+      const feature = await this.featureRepository.findOne({
+        where: { slug, isActive: true },
+      })
+      if (feature && feature.limits) {
+        return (
+          feature.limits[accessLevel] ?? this.FALLBACK_LIMITS[slug][accessLevel]
+        )
+      }
+      return this.FALLBACK_LIMITS[slug][accessLevel]
+    } catch (error) {
+      console.log(error)
+      return this.FALLBACK_LIMITS[slug][accessLevel]
+    }
   }
 
   async createMany(

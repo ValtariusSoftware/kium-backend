@@ -25,6 +25,7 @@ import { UserStatsMetadata } from './dto/user-stats-metadata.output'
 
 @Injectable()
 export class InventoryTransactionsService {
+  private readonly MAX_OPERATIONAL_BATCH_SIZE = 100
   constructor(
     @InjectRepository(InventoryTransaction)
     private readonly transactionRepository: Repository<InventoryTransaction>,
@@ -173,147 +174,7 @@ export class InventoryTransactionsService {
       if (!externalRunner) await runner.release()
     }
   }
-  // async registerMovement(
-  //   userId: string,
-  //   input: RegisterTransactionInput,
-  //   externalRunner?: QueryRunner,
-  // ): Promise<InventoryTransaction> {
-  //   const runner = externalRunner || this.dataSource.createQueryRunner()
 
-  //   if (!externalRunner) {
-  //     await runner.connect()
-  //     await runner.startTransaction()
-  //   }
-
-  //   try {
-  //     const item = await runner.manager.findOne(Item, {
-  //       where: { id: input.itemId, userId },
-  //     })
-
-  //     if (!item) {
-  //       throw new BadRequestException(ItemErrorCode.ITEM_NOT_FOUND)
-  //     }
-
-  //     // --- 0. NORMALIZACIÓN DE CANTIDAD ---
-  //     const outTypes = [
-  //       TransactionType.SALE,
-  //       TransactionType.ADJUSTMENT_OUT,
-  //       TransactionType.CONSUMPTION,
-  //     ]
-  //     // Si es un ajuste de medida, respetamos el signo que viene (positivo o negativo)
-  //     // Si es un tipo de salida conocido, forzamos negativo.
-  //     // Si es cualquier otro (compra, inicial), forzamos positivo.
-  //     let finalQuantity: number
-  //     if (input.type === TransactionType.MEASUREMENT_ADJUSTMENT) {
-  //       finalQuantity = input.quantity
-  //     } else {
-  //       finalQuantity = outTypes.includes(input.type)
-  //         ? -Math.abs(input.quantity)
-  //         : Math.abs(input.quantity)
-  //     }
-
-  //     // const finalQuantity = outTypes.includes(input.type)
-  //     //   ? -Math.abs(input.quantity)
-  //     //   : Math.abs(input.quantity)
-
-  //     // --- 🛡️ VALIDACIÓN DE STOCK SIMPLE ---
-  //     if (outTypes.includes(input.type)) {
-  //       const potentialStock = Number(item.stock) + finalQuantity
-
-  //       if (potentialStock < 0) {
-  //         // throw new GraphQLError(
-  //         //   `Stock insuficiente para ${item.name}. Disponible: ${item.stock}`,
-  //         //   {
-  //         //     extensions: {
-  //         //       code: 'INSUFFICIENT_STOCK',
-  //         //       httpStatus: 400,
-  //         //       available: item.stock,
-  //         //     },
-  //         //   },
-  //         // )
-  //         throw new BadRequestException(ItemErrorCode.INSUFFICIENT_STOCK)
-  //       }
-  //     }
-
-  //     /*// --- 1. SNAPSHOTS (CORREGIDO) ---
-  //     // El costo: Si viene en el input se usa, sino el de la ficha maestra
-  //     const unitCostSnapshot =
-  //       input.unitCostSnapshot ?? Number(item.costPrice ?? 0)
-
-  //     // El precio de venta:
-  //     // 1. Prioridad: Lo que viene por input (crucial para anulaciones y overrides)
-  //     // 2. Si es una VENTA y no viene input: Usamos el de la ficha maestra
-  //     // 3. Caso contrario: 0
-  //     let salePriceSnapshot = input.salePriceSnapshot ?? 0*/
-  //     const unitCostSnapshot = Math.round(
-  //       input.unitCostSnapshot ?? Number(item.costPrice ?? 0),
-  //     )
-  //     let salePriceSnapshot = Math.round(input.salePriceSnapshot ?? 0)
-
-  //     if (input.type === TransactionType.SALE && !input.salePriceSnapshot) {
-  //       salePriceSnapshot = Number(item.salePrice ?? 0)
-  //     }
-
-  //     // 2. Crear registro
-  //     const newTransaction = runner.manager.create(InventoryTransaction, {
-  //       ...input,
-  //       quantity: finalQuantity,
-  //       userId,
-  //       unitCostSnapshot,
-  //       salePriceSnapshot,
-  //     })
-
-  //     const savedTransaction = await runner.manager.save(newTransaction)
-
-  //     // --- 3. Actualizar Ficha Maestra (Solo para compras o inventario inicial) ---
-  //     const isPurchase =
-  //       input.type === TransactionType.PURCHASE ||
-  //       input.type === TransactionType.INITIAL_INVENTORY
-  //     const priceWasProvided =
-  //       input.unitCostSnapshot !== undefined && input.unitCostSnapshot !== null
-
-  //     if (isPurchase && priceWasProvided) {
-  //       if (!item.isProduced) {
-  //         // CASO A: Es un insumo o producto de reventa -> ACTUALIZAMOS TODO
-  //         await runner.manager.update(
-  //           Item,
-  //           { id: input.itemId },
-  //           { costPrice: unitCostSnapshot },
-  //         )
-
-  //         if (item.isIngredient) {
-  //           await this.recipesService.syncRecipeCostsByIngredient(
-  //             userId,
-  //             item.id,
-  //             runner,
-  //           )
-  //         }
-  //       } else {
-  //         // CASO B: Es producido -> El stock sube, pero el costo maestro NO se toca
-  //         // porque el costo maestro de un producido depende de su receta, no de una carga manual.
-  //         console.log(
-  //           `[Inventory] Se omitió actualización de costo maestro para "${item.name}" por ser producto producido.`,
-  //         )
-  //       }
-  //     }
-
-  //     // 4. Actualizar stock físico
-  //     await runner.manager.increment(
-  //       Item,
-  //       { id: input.itemId },
-  //       'stock',
-  //       finalQuantity,
-  //     )
-
-  //     if (!externalRunner) await runner.commitTransaction()
-  //     return savedTransaction
-  //   } catch (err) {
-  //     if (!externalRunner) await runner.rollbackTransaction()
-  //     throw err
-  //   } finally {
-  //     if (!externalRunner) await runner.release()
-  //   }
-  // }
   async findByItem(
     itemId: string,
     userId: string,
@@ -462,98 +323,6 @@ export class InventoryTransactionsService {
       },
     }
   }
-  // async getFinancialReport(
-  //   userId: string,
-  //   startDate: Date,
-  //   endDate: Date,
-  //   groupBy: ReportGroupBy,
-  // ): Promise<FinancialReportResponse> {
-  //   const dateTrunc = groupBy === ReportGroupBy.DAY ? 'day' : 'month'
-  //   const format = groupBy === ReportGroupBy.DAY ? 'YYYY-MM-DD' : 'YYYY-MM'
-  //   // console.log('DEBUG: Rango recibido -> Start:', startDate, 'End:', endDate)
-  //   // 🚨 FORZAR MOCK DATA
-  //   const useMock = true // Cambia a false cuando quieras volver a la DB real
-  //   if (useMock) {
-  //     return this.generateMockData(startDate, endDate)
-  //   }
-
-  //   const results = await this.transactionRepository
-  //     .createQueryBuilder('t')
-  //     // Unimos con la tabla de ítems para acceder al parentId
-  //     .innerJoin('t.item', 'item')
-  //     .select(
-  //       `TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`,
-  //       'label',
-  //     )
-  //     .addSelect(
-  //       `SUM(CASE
-  //       WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot
-  //       -- Excluimos RETURN_FROM_SALE si el doc empieza con VOID
-  //       WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.salePriceSnapshot
-  //       ELSE 0 END)`,
-  //       'revenue',
-  //     )
-
-  //     .addSelect(
-  //       `SUM(CASE
-  //       WHEN t.type = 'SALE' THEN ABS(t.quantity) * unit_cost_snapshot
-  //       -- Excluimos RETURN_FROM_SALE si el doc empieza con VOID
-  //       WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * unit_cost_snapshot
-  //       WHEN t.type IN ('CONSUMPTION', 'PRODUCTION_OUT') THEN ABS(t.quantity) * unit_cost_snapshot
-  //       ELSE 0 END)`,
-  //       'cost',
-  //     )
-
-  //     .addSelect(
-  //       `SUM(CASE
-  //       WHEN t.type = 'ADJUSTMENT_OUT' THEN ABS(t.quantity) * "unit_cost_snapshot"
-  //       ELSE 0 END)`,
-  //       'losses',
-  //     )
-  //     .where('t.userId = :userId', { userId })
-  //     .leftJoin('t.sale', 'sale')
-  //     .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
-  //     .andWhere('t.createdAt >= :startDate', { startDate })
-  //     .andWhere('t.createdAt < :nextDay', {
-  //       nextDay: new Date(new Date(endDate).getTime() + 86400000), // Suma 24 horas (en milisegundos)
-  //     })
-  //     // Agrupamos por la etiqueta de tiempo
-  //     .groupBy(`TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`)
-  //     .orderBy('label', 'ASC')
-  //     .getRawMany()
-
-  //   const data: FinancialDataPoint[] = results.map((r) => ({
-  //     label: r.label,
-  //     revenue: Number(r.revenue || 0),
-  //     cost: Number(r.cost || 0),
-  //     losses: Number(r.losses || 0),
-  //     netProfit:
-  //       Math.round(
-  //         (Number(r.revenue || 0) -
-  //           Number(r.cost || 0) -
-  //           Number(r.losses || 0)) *
-  //           100,
-  //       ) / 100,
-  //   }))
-
-  //   // 1. Cálculos de Totales
-  //   const totalNet = data.reduce((sum, p) => sum + p.netProfit, 0)
-
-  //   const divisor = Math.min(data.length, 6)
-  //   const avgProfit = divisor > 0 ? totalNet / divisor : 0
-
-  //   console.log('DEBUG: Largo del array data ->', data.length)
-  //   console.log('DEBUG: Divisor final ->', divisor)
-
-  //   return {
-  //     data,
-  //     avgProfit: Math.round(avgProfit * 100) / 100,
-  //     range: {
-  //       start: startDate.toISOString().slice(0, 7),
-  //       end: endDate.toISOString().slice(0, 7),
-  //     },
-  //   }
-  // }
 
   async getFinancialReport(
     userId: string,
@@ -693,7 +462,7 @@ export class InventoryTransactionsService {
     inputs: RegisterTransactionInput[],
   ): Promise<InventoryTransaction[]> {
     // 🛡️ VALIDACIÓN DE NEGOCIO: Antes de abrir la transacción
-    if (inputs.length > 50) {
+    if (inputs.length > this.MAX_OPERATIONAL_BATCH_SIZE) {
       // throw new BadRequestException(
       //   `El lote es demasiado grande. Máximo 50 movimientos, recibidos: ${inputs.length}`,
       // )
@@ -788,27 +557,4 @@ export class InventoryTransactionsService {
     })
     return count > 0
   }
-
-  /**
-   * Obtiene los últimos movimientos de stock relevantes para el Hub de operaciones.
-   * Filtra únicamente por Cargas (Compras/Inicial) y Producción.
-   */
-  // async getRecentOperationalMovements(
-  //   userId: string,
-  //   limit: number = 5,
-  // ): Promise<InventoryTransaction[]> {
-  //   return await this.transactionRepository.find({
-  //     where: {
-  //       userId,
-  //       type: In([
-  //         TransactionType.PURCHASE,
-  //         TransactionType.INITIAL_INVENTORY,
-  //         TransactionType.PRODUCTION_IN, // Asegúrate de tener este tipo en tu enum
-  //       ]),
-  //     },
-  //     relations: ['item'], // Necesitamos el ítem para mostrar el nombre
-  //     order: { createdAt: 'DESC' },
-  //     take: limit,
-  //   })
-  // }
 }

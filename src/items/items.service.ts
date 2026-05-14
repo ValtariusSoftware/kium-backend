@@ -33,6 +33,8 @@ import { ItemErrorCode } from './enums/item-error-code.enum'
 import { RecipeIngredient } from 'src/recipes/entities/recipe-ingredient.entity'
 import { Recipe } from 'src/recipes/entities/recipe.entity'
 import { ProductType } from './enums/product-type'
+import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
+import { SubscriptionFeatureSlug } from 'src/subscriptions/enums/subscription-feature-slug.enum'
 
 interface DatabaseError extends Error {
   code?: string
@@ -40,13 +42,13 @@ interface DatabaseError extends Error {
 }
 @Injectable()
 export class ItemsService {
-  // Límites de capacidad total
-  private readonly ITEM_LIMIT_FREE = 25
-  private readonly ITEM_LIMIT_PRO = 500
+  // // Límites de capacidad total
+  // private readonly ITEM_LIMIT_FREE = 25
+  // private readonly ITEM_LIMIT_PRO = 500
 
-  // Límites de operación (Carga Masiva)
-  private readonly BATCH_LIMIT_FREE = 10
-  private readonly BATCH_LIMIT_PRO = 50
+  // // Límites de operación (Carga Masiva)
+  // private readonly BATCH_LIMIT_FREE = 10
+  // private readonly BATCH_LIMIT_PRO = 50
 
   constructor(
     @InjectRepository(Item)
@@ -56,6 +58,8 @@ export class ItemsService {
     private readonly recipesService: RecipesService,
     @Inject(forwardRef(() => InventoryTransactionsService))
     private readonly inventoryTransactionsService: InventoryTransactionsService,
+    @Inject(forwardRef(() => SubscriptionsService)) // Usar forwardRef si hay circularidad
+    private readonly subscriptionsService: SubscriptionsService,
   ) {}
 
   /**
@@ -64,33 +68,6 @@ export class ItemsService {
    * @param salePrice Precio de venta actual o nuevo
    * @param currentItem (Opcional) Estado actual del ítem en DB para no pisar flags de recetas
    */
-  // private calculateItemRoles(
-  //   costPrice: number | null | undefined,
-  //   salePrice: number | null | undefined,
-  //   currentItem?: Item,
-  // ) {
-  //   const hasCost = !!costPrice && costPrice > 0
-  //   const hasSale = !!salePrice && salePrice > 0
-
-  //   // Si el ítem ya existe, mantenemos sus flags de "Receta" actuales.
-  //   // Si es nuevo, hacemos una inferencia inicial.
-  //   // const isIngredient = currentItem
-  //   //   ? currentItem.isIngredient
-  //   //   : hasCost && !hasSale
-  //   // Si tiene costo, PUEDE ser un ingrediente (no importa si también se vende)
-  //   const isIngredient = currentItem ? currentItem.isIngredient : hasCost
-
-  //   const isProduced = currentItem
-  //     ? currentItem.isProduced
-  //     : hasSale && !hasCost
-
-  //   return {
-  //     isSaleable: hasSale,
-  //     isPurchasable: !isProduced, // Solo se puede "comprar" si no es algo que fabricamos
-  //     isIngredient,
-  //     isProduced,
-  //   }
-  // }
 
   private calculateItemRoles(input: CreateItemInput, currentItem?: Item) {
     // Si no viene productType, usamos RESALE por defecto
@@ -173,15 +150,19 @@ export class ItemsService {
 
     try {
       // 1. Validar Límite de suscripción
+      // 1. OBTENER LÍMITE DINÁMICO
+      const limit = await this.subscriptionsService.getLimit(
+        SubscriptionFeatureSlug.STOCK_LIMIT,
+        accessLevel,
+      )
+
       const itemCount = await queryRunner.manager.count(Item, {
         where: { userId },
       })
-      if (
-        accessLevel === AccessLevel.FREE &&
-        itemCount >= this.ITEM_LIMIT_FREE
-      ) {
+
+      if (itemCount >= limit) {
         throw new ForbiddenException(
-          `Límite alcanzado. Máximo ${this.ITEM_LIMIT_FREE} ítems.`,
+          `Límite alcanzado. Tu plan permite máximo ${limit} ítems.`,
         )
       }
       // 2. SANITIZACIÓN DE PRECIOS (MONEDA -> BIGINT)
@@ -419,22 +400,23 @@ export class ItemsService {
     accessLevel: AccessLevel,
     inputs: CreateItemInput[],
   ): Promise<BulkItemResponse> {
-    // 1. Validar límite del "Paquete" (Batch)
-    const batchLimit =
-      accessLevel === AccessLevel.PRO
-        ? this.BATCH_LIMIT_PRO
-        : this.BATCH_LIMIT_FREE
+    // 1. VALIDAR LÍMITE DE BATCH (Cuántos puede subir por archivo)
+    const batchLimit = await this.subscriptionsService.getLimit(
+      SubscriptionFeatureSlug.BULK_UPLOAD,
+      accessLevel,
+    )
+
     if (inputs.length > batchLimit) {
       throw new ForbiddenException(
-        `Límite de carga masiva excedido (${batchLimit} ítems).`,
+        `Límite de carga masiva excedido (${batchLimit} ítems por vez).`,
       )
     }
 
-    // 2. Validar capacidad total del Plan
-    const capacityLimit =
-      accessLevel === AccessLevel.PRO
-        ? this.ITEM_LIMIT_PRO
-        : this.ITEM_LIMIT_FREE
+    // 2. VALIDAR CAPACIDAD TOTAL
+    const capacityLimit = await this.subscriptionsService.getLimit(
+      SubscriptionFeatureSlug.STOCK_LIMIT,
+      accessLevel,
+    )
     const currentCount = await this.itemsRepository.count({ where: { userId } })
 
     const createdItemsIds: string[] = []
@@ -568,17 +550,22 @@ export class ItemsService {
     accessLevel: AccessLevel,
     ids: string[],
   ): Promise<boolean> {
-    // 1. Validación de Nivel de Acceso
-    if (accessLevel !== AccessLevel.PRO) {
-      throw new ForbiddenException(
-        'La eliminación masiva es una función exclusiva para usuarios PRO.',
-      )
+    // 1. Obtener límite de lote (Batch) desde la DB
+    // Usamos el slug 'bulk_batch_limit' o uno específico como 'bulk_delete_limit'
+    const batchLimit = await this.subscriptionsService.getLimit(
+      SubscriptionFeatureSlug.MULTI_PRODUCT_DELETION,
+      accessLevel,
+    )
+
+    // 2. Si el límite es 0, significa que la feature está bloqueada para su nivel
+    if (batchLimit <= 0) {
+      throw new ForbiddenException(ItemErrorCode.PRO_FEATURE_ONLY)
     }
 
-    // 2. Validación de Límite de Lote
-    if (ids.length > this.BATCH_LIMIT_PRO) {
+    // 3. Validación de tamaño del lote solicitado
+    if (ids.length > batchLimit) {
       throw new ForbiddenException(
-        `No puedes eliminar más de ${this.BATCH_LIMIT_PRO} ítems a la vez.`,
+        `No puedes eliminar más de ${batchLimit} ítems a la vez.`,
       )
     }
 
@@ -643,12 +630,17 @@ export class ItemsService {
     accessLevel: AccessLevel,
     inputs: BulkUpdateItemInput[],
   ): Promise<Item[]> {
-    // 1. Validaciones globales (Usando Enums)
-    if (accessLevel !== AccessLevel.PRO) {
+    // 1. Validar permiso y límite de lote dinámicamente
+    const batchLimit = await this.subscriptionsService.getLimit(
+      SubscriptionFeatureSlug.MULTI_PRODUCT_UPDATE,
+      accessLevel,
+    )
+
+    if (batchLimit <= 0) {
       throw new ForbiddenException(ItemErrorCode.PRO_FEATURE_ONLY)
     }
 
-    if (inputs.length > this.BATCH_LIMIT_PRO) {
+    if (inputs.length > batchLimit) {
       throw new ForbiddenException(ItemErrorCode.BULK_LIMIT_EXCEEDED)
     }
 

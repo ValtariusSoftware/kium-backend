@@ -7,5 +7,6 @@ export enum SubscriptionFeatureSlug {
   PROFITABILITY_REPORTS = 'profitability_reports',
   MULTI_PRODUCT_UPDATE = 'multi_product_update',
   MULTI_PRODUCT_DELETION = 'multi_product_deletion',
+  ANALYTICS_LEAST_SELLING = 'analytics_least_selling',
   // PRIORITY_SUPPORT = 'priority_support',
 }

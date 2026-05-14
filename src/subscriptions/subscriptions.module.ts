@@ -13,5 +13,7 @@ import { SubscriptionsResolver } from './subscriptions.resolver'
     ]),
   ],
   providers: [SubscriptionsResolver, SubscriptionsService],
+  // 🚩 ESTO ES LO QUE FALTA:
+  exports: [SubscriptionsService],
 })
 export class SubscriptionsModule {}
