@@ -48,7 +48,7 @@ Token leído de DataStore (Inicio): 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdW
 
 
 
-REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzc4NzcxNjcyLCJleHAiOjE3NzkzNzY0NzJ9.9vlpH96kfO7NH3b5zzOIVfSdp-Ug8e1halJqI4G_l3w
+REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzc4ODc0NDIxLCJleHAiOjE3Nzk0NzkyMjF9.i_V-6zUaZ7QeQndiX69KwZMiOVCnqqOc2ZHlb5IO1wQ
 
 {
   "input": {

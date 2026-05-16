@@ -111,4 +111,17 @@ export class UsersService {
 
     return this.usersRepository.save(user)
   }
+
+  async updateFcmToken(userId: string, token: string): Promise<boolean> {
+    const user = await this.usersRepository.findOneBy({ id: userId })
+    if (!user) return false
+
+    // Evitamos duplicados en el array
+    const tokens = user.fcmTokens || []
+    if (!tokens.includes(token)) {
+      tokens.push(token)
+      await this.usersRepository.update(userId, { fcmTokens: tokens })
+    }
+    return true
+  }
 }

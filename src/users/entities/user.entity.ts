@@ -91,6 +91,19 @@ export class User {
   @Field(() => AccessLevel)
   accessLevel: AccessLevel
 
+  @Column('text', {
+    array: true,
+    default: '{}',
+    name: 'fcm_tokens',
+  })
+  @Field(() => [String], { defaultValue: [] })
+  fcmTokens: string[]
+
+  // src/users/entities/user.entity.ts
+  @Column({ type: 'timestamp', nullable: true, name: 'last_subscription_view' })
+  @Field({ nullable: true })
+  lastSubscriptionView?: Date
+
   // 💡 CAMBIO CLAVE: Indicamos que la columna en la DB se llama 'created_at'
   @CreateDateColumn({ type: 'timestamp', name: 'created_at' })
   @Field()
