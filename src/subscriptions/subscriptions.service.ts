@@ -6,13 +6,22 @@ import { CreateSubscriptionFeatureInput } from './dto/create-subscription-featur
 import { UpdateSubscriptionFeatureInput } from './dto/update-subscription-feature.input'
 import { SubscriptionFeatureTranslation } from './entities/subscription-feature-translation.entity'
 import { SubscriptionFeatureSlug } from './enums/subscription-feature-slug.enum'
-import { AccessLevel } from 'src/users/entities/user.entity'
+import { AccessLevel, User } from 'src/users/entities/user.entity'
+import { Logger } from '@nestjs/common'
+import { Cron, CronExpression } from '@nestjs/schedule'
+import { LessThan } from 'typeorm'
+import { NotificationsService } from 'src/notifications/notifications.service'
 
 @Injectable()
 export class SubscriptionsService {
+  private readonly logger = new Logger(SubscriptionsService.name)
   constructor(
     @InjectRepository(SubscriptionFeature)
     private featureRepository: Repository<SubscriptionFeature>,
+    @InjectRepository(User)
+    private readonly usersRepository: Repository<User>,
+
+    private readonly notificationsService: NotificationsService,
   ) {}
 
   async findAll() {
@@ -217,5 +226,54 @@ export class SubscriptionsService {
     }
 
     return (deleteResult.affected ?? 0) > 0
+  }
+
+  // 1. Registrar la vista (La App llama a esto)
+  async trackSubscriptionView(userId: string) {
+    await this.usersRepository.update(userId, {
+      lastSubscriptionView: new Date(),
+    })
+    return true
+  }
+
+  // 2. Tarea Automática (Monitorea la DB cada minuto)
+  @Cron(CronExpression.EVERY_MINUTE) // 👈 Cambiado a cada minuto para desarrollo
+  async handleSubscriptionRetargeting() {
+    this.logger.log('Ejecutando retargeting de suscripciones...')
+
+    // Simulamos que pasaron 24 horas reduciéndolo a 2 minutos para testear (2 * 60 * 1000)
+    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000)
+
+    // 💡 LOGS DE DIAGNÓSTICO:
+    this.logger.log(`Hora actual del Servidor: ${new Date().toISOString()}`)
+    this.logger.log(
+      `Buscando registros menores a: ${twoMinutesAgo.toISOString()}`,
+    )
+
+    const candidates = await this.usersRepository.find({
+      where: {
+        accessLevel: AccessLevel.FREE,
+        lastSubscriptionView: LessThan(twoMinutesAgo),
+      },
+    })
+
+    this.logger.log(`Usuarios candidatos encontrados: ${candidates.length}`)
+
+    for (const user of candidates) {
+      this.logger.log(
+        `Enviando oferta de retargeting al usuario: ${user.username}`,
+      )
+
+      await this.notificationsService.sendPushNotification(
+        user.fcmTokens,
+        '¡Desbloqueá todo el poder de Kium! 💎',
+        'Vimos que te interesa el Plan Pro. Aprovechá hoy y llevá tu negocio al siguiente nivel.',
+      )
+
+      // Limpiamos la fecha usando la función nativa para evitar el spam en el próximo minuto
+      await this.usersRepository.update(user.id, {
+        lastSubscriptionView: () => 'NULL',
+      })
+    }
   }
 }

@@ -32,4 +32,12 @@ export class UsersResolver {
     // Solo el propio usuario (o un admin) puede cambiarse el nivel
     return this.usersService.changeAccessLevel(user.id, input.level)
   }
+
+  @Mutation(() => Boolean)
+  async updateFcmToken(
+    @Args('token') token: string,
+    @CurrentUser() user: User,
+  ): Promise<boolean> {
+    return this.usersService.updateFcmToken(user.id, token)
+  }
 }

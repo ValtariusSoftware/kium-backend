@@ -55,4 +55,11 @@ export class SubscriptionsResolver {
   ) {
     return this.subscriptionsService.removeMany(ids)
   }
+
+  @Mutation(() => Boolean, {
+    description: 'Registra cuando un usuario entra a ver los precios',
+  })
+  async logSubscriptionView(@CurrentUser() user: User): Promise<boolean> {
+    return this.subscriptionsService.trackSubscriptionView(user.id)
+  }
 }

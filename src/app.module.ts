@@ -24,6 +24,8 @@ import { ItemsService } from './items/items.service'
 import { AppController } from './app.controller'
 // 🚨 ELIMINAR ESTA LÍNEA -> import { JwtStrategy } from './auth/strategies/jwt.strategy'
 import { SubscriptionsModule } from './subscriptions/subscriptions.module'
+import { NotificationsModule } from './notifications/notifications.module'
+import { ScheduleModule } from '@nestjs/schedule'
 
 @Module({
   imports: [
@@ -55,6 +57,8 @@ import { SubscriptionsModule } from './subscriptions/subscriptions.module'
     SalesModule,
     DashboardModule,
     SubscriptionsModule,
+    NotificationsModule,
+    ScheduleModule.forRoot(),
   ],
   controllers: [AppController],
   providers: [

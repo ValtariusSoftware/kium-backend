@@ -84,6 +84,8 @@ type User {
   subscriptionStartDate: DateTime
   subscriptionStatus: SubscriptionStatus!
   accessLevel: AccessLevel!
+  fcmTokens: [String!]!
+  lastSubscriptionView: DateTime
   createdAt: DateTime!
   updatedAt: DateTime!
 }
@@ -399,7 +401,12 @@ type Mutation {
   createSubscriptionFeatures(inputs: [CreateSubscriptionFeatureInput!]!): [SubscriptionFeature!]!
   updateSubscriptionFeatures(inputs: [UpdateSubscriptionFeatureInput!]!): [SubscriptionFeature!]!
   removeSubscriptionFeatures(ids: [String!]!): Boolean!
+
+  """Registra cuando un usuario entra a ver los precios"""
+  logSubscriptionView: Boolean!
   updateUserAccessLevel(input: UpdateAccessLevelInput!): User!
+  updateFcmToken(token: String!): Boolean!
+  sendTestNotification: Boolean!
 
   """Autenticación con el ID Token de Google/Firebase."""
   googleAuth(idToken: String!): AuthPayload!
