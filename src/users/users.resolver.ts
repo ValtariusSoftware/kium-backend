@@ -33,11 +33,21 @@ export class UsersResolver {
     return this.usersService.changeAccessLevel(user.id, input.level)
   }
 
+  // @Mutation(() => Boolean)
+  // async updateFcmToken(
+  //   @Args('token') token: string,
+  //   @CurrentUser() user: User,
+  // ): Promise<boolean> {
+  //   return this.usersService.updateFcmToken(user.id, token)
+  // }
+
   @Mutation(() => Boolean)
   async updateFcmToken(
     @Args('token') token: string,
+    @Args('language') language: string, // 💎 Nuevo argumento que viene de Android
     @CurrentUser() user: User,
   ): Promise<boolean> {
-    return this.usersService.updateFcmToken(user.id, token)
+    // Le pasamos el idioma al servicio
+    return this.usersService.updateFcmToken(user.id, token, language)
   }
 }

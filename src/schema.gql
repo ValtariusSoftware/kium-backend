@@ -85,6 +85,7 @@ type User {
   subscriptionStatus: SubscriptionStatus!
   accessLevel: AccessLevel!
   fcmTokens: [String!]!
+  language: String!
   lastSubscriptionView: DateTime
   createdAt: DateTime!
   updatedAt: DateTime!
@@ -184,6 +185,22 @@ type SubscriptionFeature {
 The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
 """
 scalar JSON @specifiedBy(url: "http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf")
+
+type NotificationCampaignTranslation {
+  id: ID!
+  languageCode: String!
+  title: String!
+  body: String!
+  campaignId: String!
+}
+
+type NotificationCampaign {
+  id: ID!
+  slug: String!
+  isActive: Boolean!
+  updatedAt: DateTime!
+  translations: [NotificationCampaignTranslation!]!
+}
 
 type BulkItemError {
   row: Int!
@@ -322,6 +339,7 @@ type Query {
   subscriptionFeaturesByLanguage(lang: String!): [SubscriptionFeature!]!
   me: User
   users: [User!]!
+  notificationCampaigns: [NotificationCampaign!]!
 
   """Simula el consumo de ingredientes sin afectar el stock real."""
   simulateProductionBatch(inputs: [ProduceItemInput!]!): BatchSimulationResponse!
@@ -405,8 +423,10 @@ type Mutation {
   """Registra cuando un usuario entra a ver los precios"""
   logSubscriptionView: Boolean!
   updateUserAccessLevel(input: UpdateAccessLevelInput!): User!
-  updateFcmToken(token: String!): Boolean!
-  sendTestNotification: Boolean!
+  updateFcmToken(token: String!, language: String!): Boolean!
+  createNotificationCampaigns(inputs: [CreateNotificationCampaignInput!]!): [NotificationCampaign!]!
+  updateNotificationCampaigns(inputs: [UpdateNotificationCampaignInput!]!): [NotificationCampaign!]!
+  removeNotificationCampaigns(ids: [String!]!): Boolean!
 
   """Autenticación con el ID Token de Google/Firebase."""
   googleAuth(idToken: String!): AuthPayload!
@@ -533,6 +553,25 @@ input UpdateSubscriptionFeatureInput {
 
 input UpdateAccessLevelInput {
   level: AccessLevel!
+}
+
+input CreateNotificationCampaignInput {
+  slug: String!
+  isActive: Boolean! = true
+  translations: [NotificationCampaignTranslationInput!]!
+}
+
+input NotificationCampaignTranslationInput {
+  languageCode: String!
+  title: String!
+  body: String!
+}
+
+input UpdateNotificationCampaignInput {
+  slug: String
+  isActive: Boolean = true
+  translations: [NotificationCampaignTranslationInput!]
+  id: ID!
 }
 
 input CreateSaleInput {
