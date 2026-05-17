@@ -99,6 +99,11 @@ export class User {
   @Field(() => [String], { defaultValue: [] })
   fcmTokens: string[]
 
+  // 💎 NUEVO CAMPO DE IDIOMA: Mapea con la columna que agrega la migración
+  @Column('varchar', { length: 10, name: 'language', default: 'en' })
+  @Field({ defaultValue: 'en' })
+  language: string
+
   // src/users/entities/user.entity.ts
   @Column({ type: 'timestamp', nullable: true, name: 'last_subscription_view' })
   @Field({ nullable: true })

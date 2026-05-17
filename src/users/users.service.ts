@@ -112,16 +112,50 @@ export class UsersService {
     return this.usersRepository.save(user)
   }
 
-  async updateFcmToken(userId: string, token: string): Promise<boolean> {
+  // async updateFcmToken(userId: string, token: string): Promise<boolean> {
+  //   const user = await this.usersRepository.findOneBy({ id: userId })
+  //   if (!user) return false
+
+  //   // Evitamos duplicados en el array
+  //   const tokens = user.fcmTokens || []
+  //   if (!tokens.includes(token)) {
+  //     tokens.push(token)
+  //     await this.usersRepository.update(userId, { fcmTokens: tokens })
+  //   }
+  //   return true
+  // }
+
+  async updateFcmToken(
+    userId: string,
+    token: string,
+    language: string,
+  ): Promise<boolean> {
     const user = await this.usersRepository.findOneBy({ id: userId })
     if (!user) return false
 
-    // Evitamos duplicados en el array
+    // 1. Evitamos duplicados en el array de tokens
     const tokens = user.fcmTokens || []
+    let hasChanges = false
+
     if (!tokens.includes(token)) {
       tokens.push(token)
-      await this.usersRepository.update(userId, { fcmTokens: tokens })
+      hasChanges = true
     }
+
+    // 2. 💎 Si el idioma guardado en la DB es distinto al que tiene la app ahora, lo actualizamos
+    if (user.language !== language) {
+      user.language = language
+      hasChanges = true
+    }
+
+    // Guardamos en la base de datos sólo si hubo cambios en los tokens o en el idioma
+    if (hasChanges) {
+      await this.usersRepository.update(userId, {
+        fcmTokens: tokens,
+        language: user.language,
+      })
+    }
+
     return true
   }
 }

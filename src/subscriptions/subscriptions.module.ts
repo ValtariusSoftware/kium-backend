@@ -6,12 +6,14 @@ import { SubscriptionsService } from './subscriptions.service'
 import { SubscriptionsResolver } from './subscriptions.resolver'
 import { UsersModule } from 'src/users/users.module'
 import { NotificationsModule } from 'src/notifications/notifications.module'
+import { NotificationCampaign } from 'src/notifications/entities/notification-campaign.entity'
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([
       SubscriptionFeature,
       SubscriptionFeatureTranslation,
+      NotificationCampaign,
     ]),
     UsersModule,
     NotificationsModule,

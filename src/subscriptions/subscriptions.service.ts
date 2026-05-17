@@ -11,6 +11,7 @@ import { Logger } from '@nestjs/common'
 import { Cron, CronExpression } from '@nestjs/schedule'
 import { LessThan } from 'typeorm'
 import { NotificationsService } from 'src/notifications/notifications.service'
+import { NotificationCampaign } from 'src/notifications/entities/notification-campaign.entity'
 
 @Injectable()
 export class SubscriptionsService {
@@ -20,6 +21,9 @@ export class SubscriptionsService {
     private featureRepository: Repository<SubscriptionFeature>,
     @InjectRepository(User)
     private readonly usersRepository: Repository<User>,
+    // 💎 INYECTAMOS EL NUEVO REPOSITORIO DE CAMPAÑAS
+    @InjectRepository(NotificationCampaign)
+    private readonly campaignRepository: Repository<NotificationCampaign>,
 
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -229,6 +233,55 @@ export class SubscriptionsService {
   }
 
   // 1. Registrar la vista (La App llama a esto)
+  // async trackSubscriptionView(userId: string) {
+  //   await this.usersRepository.update(userId, {
+  //     lastSubscriptionView: new Date(),
+  //   })
+  //   return true
+  // }
+
+  // // 2. Tarea Automática (Monitorea la DB cada minuto)
+  // @Cron(CronExpression.EVERY_MINUTE) // 👈 Cambiado a cada minuto para desarrollo
+  // async handleSubscriptionRetargeting() {
+  //   this.logger.log('Ejecutando retargeting de suscripciones...')
+
+  //   // Simulamos que pasaron 24 horas reduciéndolo a 2 minutos para testear (2 * 60 * 1000)
+  //   const twoMinutesAgo = new Date(Date.now() - 1 * 60 * 1000)
+
+  //   // 💡 LOGS DE DIAGNÓSTICO:
+  //   this.logger.log(`Hora actual del Servidor: ${new Date().toISOString()}`)
+  //   this.logger.log(
+  //     `Buscando registros menores a: ${twoMinutesAgo.toISOString()}`,
+  //   )
+
+  //   const candidates = await this.usersRepository.find({
+  //     where: {
+  //       accessLevel: AccessLevel.FREE,
+  //       lastSubscriptionView: LessThan(twoMinutesAgo),
+  //     },
+  //   })
+
+  //   this.logger.log(`Usuarios candidatos encontrados: ${candidates.length}`)
+
+  //   for (const user of candidates) {
+  //     this.logger.log(
+  //       `Enviando oferta de retargeting al usuario: ${user.username}`,
+  //     )
+
+  //     await this.notificationsService.sendPushNotification(
+  //       user.fcmTokens,
+  //       '¡Desbloqueá todo el poder de Kium! 💎',
+  //       'Vimos que te interesa el Plan Pro. Aprovechá hoy y llevá tu negocio al siguiente nivel.',
+  //     )
+
+  //     // Limpiamos la fecha usando la función nativa para evitar el spam en el próximo minuto
+  //     await this.usersRepository.update(user.id, {
+  //       lastSubscriptionView: () => 'NULL',
+  //     })
+  //   }
+  // }
+
+  // 1. Registrar la vista (La App llama a esto)
   async trackSubscriptionView(userId: string) {
     await this.usersRepository.update(userId, {
       lastSubscriptionView: new Date(),
@@ -237,40 +290,83 @@ export class SubscriptionsService {
   }
 
   // 2. Tarea Automática (Monitorea la DB cada minuto)
-  @Cron(CronExpression.EVERY_MINUTE) // 👈 Cambiado a cada minuto para desarrollo
+  @Cron(CronExpression.EVERY_MINUTE) // 👈 Mantener cada minuto para testear
   async handleSubscriptionRetargeting() {
-    this.logger.log('Ejecutando retargeting de suscripciones...')
-
-    // Simulamos que pasaron 24 horas reduciéndolo a 2 minutos para testear (2 * 60 * 1000)
-    const twoMinutesAgo = new Date(Date.now() - 2 * 60 * 1000)
-
-    // 💡 LOGS DE DIAGNÓSTICO:
-    this.logger.log(`Hora actual del Servidor: ${new Date().toISOString()}`)
     this.logger.log(
-      `Buscando registros menores a: ${twoMinutesAgo.toISOString()}`,
+      'Ejecutando retargeting dinámico multi-idioma de suscripciones...',
     )
 
+    // Simulamos el desfasaje de tiempo para las pruebas
+    const testTimeGap = new Date(Date.now() - 1 * 60 * 1000)
+
+    // 1. Buscamos los usuarios que cumplen las condiciones del retargeting
     const candidates = await this.usersRepository.find({
       where: {
         accessLevel: AccessLevel.FREE,
-        lastSubscriptionView: LessThan(twoMinutesAgo),
+        lastSubscriptionView: LessThan(testTimeGap),
       },
     })
 
-    this.logger.log(`Usuarios candidatos encontrados: ${candidates.length}`)
-
-    for (const user of candidates) {
+    if (candidates.length === 0) {
       this.logger.log(
-        `Enviando oferta de retargeting al usuario: ${user.username}`,
+        'No se encontraron usuarios candidatos para retargeting en este minuto.',
+      )
+      return
+    }
+
+    // 2. 💎 Traemos la campaña 'sub_retargeting' activa junto con todas sus traducciones
+    const campaign = await this.campaignRepository.findOne({
+      where: { slug: 'sub_retargeting', isActive: true },
+      relations: ['translations'],
+    })
+
+    if (!campaign) {
+      this.logger.warn(
+        '⚠️ La campaña "sub_retargeting" no está disponible o está inactiva en la base de datos.',
+      )
+      return
+    }
+
+    this.logger.log(
+      `Procesando envío personalizado para ${candidates.length} usuario(s).`,
+    )
+
+    // 3. Iteramos por cada usuario aplicando su idioma nativo o el fallback
+    for (const user of candidates) {
+      const userLang = user.language || 'en' // 'en' como resguardo definitivo si el campo es nulo
+
+      // Buscamos la traducción exacta que guardamos para el idioma del usuario
+      let translation = campaign.translations.find(
+        (t) => t.languageCode === userLang,
       )
 
+      // 💡 Fallback inteligente: si por alguna razón el usuario tiene un idioma que no cargamos, usamos inglés
+      if (!translation) {
+        this.logger.warn(
+          `Traducción no encontrada para [${userLang}]. Aplicando fallback a inglés.`,
+        )
+        translation = campaign.translations.find((t) => t.languageCode === 'en')
+      }
+
+      if (!translation) {
+        this.logger.error(
+          `❌ Error crítico: No se encontró traducción ni en [${userLang}] ni en inglés para la campaña.`,
+        )
+        continue
+      }
+
+      this.logger.log(
+        `🚀 Enviando Push en idioma [${userLang}] al usuario: ${user.username}`,
+      )
+
+      // Despachamos la notificación con el título y cuerpo recuperados de forma dinámica
       await this.notificationsService.sendPushNotification(
         user.fcmTokens,
-        '¡Desbloqueá todo el poder de Kium! 💎',
-        'Vimos que te interesa el Plan Pro. Aprovechá hoy y llevá tu negocio al siguiente nivel.',
+        translation.title,
+        translation.body,
       )
 
-      // Limpiamos la fecha usando la función nativa para evitar el spam en el próximo minuto
+      // Limpiamos la fecha en la DB para que no vuelva a entrar en el loop en el próximo minuto
       await this.usersRepository.update(user.id, {
         lastSubscriptionView: () => 'NULL',
       })
