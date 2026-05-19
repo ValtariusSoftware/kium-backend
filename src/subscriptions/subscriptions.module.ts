@@ -7,6 +7,7 @@ import { SubscriptionsResolver } from './subscriptions.resolver'
 import { UsersModule } from 'src/users/users.module'
 import { NotificationsModule } from 'src/notifications/notifications.module'
 import { NotificationCampaign } from 'src/notifications/entities/notification-campaign.entity'
+import { UserCampaignTracker } from 'src/notifications/entities/user-campaign-tracker.entity'
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { NotificationCampaign } from 'src/notifications/entities/notification-ca
       SubscriptionFeature,
       SubscriptionFeatureTranslation,
       NotificationCampaign,
+      UserCampaignTracker,
     ]),
     UsersModule,
     NotificationsModule,

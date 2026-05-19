@@ -50,4 +50,12 @@ export class UsersResolver {
     // Le pasamos el idioma al servicio
     return this.usersService.updateFcmToken(user.id, token, language)
   }
+
+  @Mutation(() => Boolean)
+  async logoutAndClearToken(
+    @Args('token') token: string,
+    @CurrentUser() user: User, // Tu decorador para obtener el usuario autenticado
+  ): Promise<boolean> {
+    return this.usersService.removeFcmToken(user.id, token)
+  }
 }

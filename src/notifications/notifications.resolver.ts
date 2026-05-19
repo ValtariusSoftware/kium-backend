@@ -42,4 +42,19 @@ export class NotificationsResolver {
   ) {
     return this.notificationsService.removeMany(ids)
   }
+
+  @Mutation(() => Boolean)
+  async updateMyNotificationPreferences(
+    @CurrentUser() user: User,
+    @Args({ name: 'slug', type: () => String }) slug: string,
+    @Args({ name: 'isEnabled', type: () => Boolean }) isEnabled: boolean,
+  ) {
+    // Guardar o actualizar en la nueva tabla (Upsert)
+    await this.notificationsService.updateUserPreference(
+      user.id,
+      slug,
+      isEnabled,
+    )
+    return true
+  }
 }

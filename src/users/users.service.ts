@@ -158,4 +158,18 @@ export class UsersService {
 
     return true
   }
+
+  async removeFcmToken(
+    userId: string,
+    tokenToRemove: string,
+  ): Promise<boolean> {
+    const user = await this.usersRepository.findOne({ where: { id: userId } })
+    if (!user || !user.fcmTokens) return false
+
+    // Filtramos el token para removerlo del array
+    user.fcmTokens = user.fcmTokens.filter((token) => token !== tokenToRemove)
+
+    await this.usersRepository.save(user)
+    return true
+  }
 }
