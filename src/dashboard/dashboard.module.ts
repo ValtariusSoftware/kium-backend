@@ -10,5 +10,6 @@ import { Item } from '../items/entities/item.entity'
 @Module({
   imports: [TypeOrmModule.forFeature([Sale, InventoryTransaction, Item])],
   providers: [DashboardService, DashboardResolver],
+  exports: [DashboardService],
 })
 export class DashboardModule {}
