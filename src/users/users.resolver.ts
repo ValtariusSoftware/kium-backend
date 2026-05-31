@@ -58,4 +58,10 @@ export class UsersResolver {
   ): Promise<boolean> {
     return this.usersService.removeFcmToken(user.id, token)
   }
+
+  @Mutation(() => Boolean, { name: 'deleteUserAccount' })
+  async deleteUserAccount(@CurrentUser() user: User): Promise<boolean> {
+    // El control de si el token es válido o no lo maneja directamente el servicio
+    return this.usersService.deleteAccount(user)
+  }
 }

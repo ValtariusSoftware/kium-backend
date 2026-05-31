@@ -4,10 +4,13 @@ import {
   Injectable,
   Logger,
   InternalServerErrorException,
+  NotFoundException,
+  UnauthorizedException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { AccessLevel, SubscriptionStatus, User } from './entities/user.entity'
+import { UserErrorCode } from './enums/user-error-code.enum'
 
 // 🚨 Definimos una interfaz para el payload del token decodificado de Firebase
 // Usamos solo los campos necesarios
@@ -171,5 +174,49 @@ export class UsersService {
 
     await this.usersRepository.save(user)
     return true
+  }
+
+  async deleteAccount(user: User | null): Promise<boolean> {
+    // 1. Validación de Autenticación al estilo Kium
+    if (!user || !user.id) {
+      this.logger.warn(
+        'Intento de eliminación de cuenta bloqueado: Usuario no autenticado.',
+      )
+      throw new UnauthorizedException(UserErrorCode.USER_NOT_AUTHENTICATED)
+    }
+
+    // 2. Validación de Existencia en DB
+    const userExists = await this.usersRepository.findOne({
+      where: { id: user.id },
+    })
+    if (!userExists) {
+      this.logger.warn(
+        `Intento de eliminación fallido: ID=${user.id} no existe en la base de datos.`,
+      )
+      throw new NotFoundException(UserErrorCode.USER_NOT_FOUND)
+    }
+
+    try {
+      this.logger.log(
+        `Iniciando borrado ON DELETE CASCADE para: ID=${user.id}, Email=${user.email}`,
+      )
+
+      // 3. Destrucción del registro
+      await this.usersRepository.delete(user.id)
+
+      this.logger.log(`Cuenta eliminada de raíz con éxito: ID=${user.id}`)
+      return true
+    } catch (error) {
+      const err = error as Error
+      this.logger.error(
+        `Error crítico al borrar cuenta ${user.id}: ${err.message}`,
+        err.stack,
+      )
+
+      // Error genérico controlado si explota la conexión o la base de datos
+      throw new InternalServerErrorException(
+        UserErrorCode.DELETE_ACCOUNT_FAILED,
+      )
+    }
   }
 }

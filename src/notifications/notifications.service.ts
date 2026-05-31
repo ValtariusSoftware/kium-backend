@@ -301,10 +301,10 @@ export class NotificationsService {
   // @Cron('*/3 * * * *')
 
   // 🚀 ESCENARIO C (Producción - Comentado): Corre todos los lunes a las 9:00 AM, Ventana de 6 días.
-  // @Cron('0 9 * * 1')
+  @Cron('0 9 * * 1')
 
   // 🔍 ESCENARIO B (Prueba Media - ACTIVO): Corre exactamente cada hora y media (90 minutos).
-  @Cron('*/90 * * * *') // ⏳ Se ejecuta cada 90 minutos exactos
+  // @Cron('*/90 * * * *') // ⏳ Se ejecuta cada 90 minutos exactos
   async handleProductPerformanceCampaign() {
     this.logger.log(
       'Procesando campaña de rendimiento de productos (product_performance)...',
@@ -316,7 +316,7 @@ export class NotificationsService {
     // Inmediatez: 150 * 1000 (2.5 Minutos)
     // Prueba Media: 90 * 60 * 1000 (1 Hora y media)
     // Producción: 6 * 24 * 60 * 60 * 1000 (6 Días)
-    const ANTI_SPAM_WINDOW_MS = 90 * 60 * 1000
+    const ANTI_SPAM_WINDOW_MS = 6 * 24 * 60 * 60 * 1000
 
     // 1. Traemos la campaña activa con sus traducciones
     const campaign = await this.campaignRepository.findOne({
