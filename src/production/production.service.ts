@@ -26,6 +26,7 @@ import { InventoryTransactionsService } from '../inventory-transactions/inventor
 import { TransactionType } from '../inventory-transactions/enums/transaction-type.enum'
 import { ItemErrorCode } from 'src/items/enums/item-error-code.enum'
 import { BulkItemError, BulkItemResponse } from 'src/items/dto/create-item.dto'
+import { getUnitConversionFactor } from 'src/common/logic/unit-conversion.logic'
 
 @Injectable()
 export class ProductionService {
@@ -69,16 +70,46 @@ export class ProductionService {
 
       // --- 1. VALIDACIÓN DE STOCK ---
       for (const ingredient of recipe.ingredients) {
+        // const stockQtyToConsume =
+        //   (ingredient.quantityRequired * factor) /
+        //   ingredient.ingredientItem.conversionToBaseQty
+
+        // const dbItem = await queryRunner.manager.findOne(Item, {
+        //   where: { id: ingredient.ingredientItemId },
+        //   lock: { mode: 'pessimistic_write' },
+        // })
+
+        // if (Number(dbItem?.stock || 0) < stockQtyToConsume) {
+        //   missingIngredients.push(ingredient.ingredientItem.name)
+        // }
+
+        // AÑADE ESTO: Normalización igual que en el simulateBatch
+        const unitScaleFactor = getUnitConversionFactor(
+          ingredient.unitOfMeasure,
+          ingredient.ingredientItem.baseUnit,
+        )
+        const packingFactor =
+          Number(ingredient.ingredientItem.conversionToBaseQty) || 1
+
+        // Calculamos la cantidad necesaria real en unidad base
         const stockQtyToConsume =
           (ingredient.quantityRequired * factor) /
-          ingredient.ingredientItem.conversionToBaseQty
+          (unitScaleFactor * packingFactor)
 
         const dbItem = await queryRunner.manager.findOne(Item, {
           where: { id: ingredient.ingredientItemId },
           lock: { mode: 'pessimistic_write' },
         })
 
+        // LOG PARA VER POR QUÉ FALLA
+        console.log(
+          `DEBUG_PRODUCE: Ingrediente: ${ingredient.ingredientItem.name}, StockReal: ${dbItem?.stock}, RequeridoNormalizado: ${stockQtyToConsume}`,
+        )
+
         if (Number(dbItem?.stock || 0) < stockQtyToConsume) {
+          console.log(
+            `DEBUG_PRODUCE: ¡FALLO DE STOCK! ${ingredient.ingredientItem.name} insuficiente.`,
+          )
           missingIngredients.push(ingredient.ingredientItem.name)
         }
       }
@@ -91,15 +122,50 @@ export class ProductionService {
       }
 
       // --- 2. CONSUMO DE INGREDIENTES Y CÁLCULO DE COSTO ---
+      // for (const ingredient of recipe.ingredients) {
+      //   const stockQtyToConsume =
+      //     (ingredient.quantityRequired * factor) /
+      //     ingredient.ingredientItem.conversionToBaseQty
+
+      //   // Usamos el costo actual del ingrediente
+      //   const ingredientUnitCost = Number(
+      //     ingredient.ingredientItem.costPrice || 0,
+      //   )
+      //   totalProductionCost += stockQtyToConsume * ingredientUnitCost
+
+      //   await this.inventoryTransactionsService.registerMovement(
+      //     userId,
+      //     {
+      //       itemId: ingredient.ingredientItemId,
+      //       type: TransactionType.CONSUMPTION,
+      //       quantity: stockQtyToConsume,
+      //       documentRef: `PROD-RECIPE-${recipe.id}`,
+      //       notes: `Insumo para ${input.quantityToProduce} ${recipe.finalProduct.name}`,
+      //       unitCostSnapshot: ingredientUnitCost,
+      //     },
+      //     queryRunner,
+      //   )
+      // }
+
+      // --- 2. CONSUMO DE INGREDIENTES Y CÁLCULO DE COSTO ---
       for (const ingredient of recipe.ingredients) {
+        // 1. Calculamos la misma cantidad normalizada que en el bloque 1
+        const unitScaleFactor = getUnitConversionFactor(
+          ingredient.unitOfMeasure,
+          ingredient.ingredientItem.baseUnit,
+        )
+        const packingFactor =
+          Number(ingredient.ingredientItem.conversionToBaseQty) || 1
+
         const stockQtyToConsume =
           (ingredient.quantityRequired * factor) /
-          ingredient.ingredientItem.conversionToBaseQty
+          (unitScaleFactor * packingFactor)
 
         // Usamos el costo actual del ingrediente
         const ingredientUnitCost = Number(
           ingredient.ingredientItem.costPrice || 0,
         )
+        // El costo proporcional se basa en la cantidad real normalizada
         totalProductionCost += stockQtyToConsume * ingredientUnitCost
 
         await this.inventoryTransactionsService.registerMovement(
@@ -107,6 +173,7 @@ export class ProductionService {
           {
             itemId: ingredient.ingredientItemId,
             type: TransactionType.CONSUMPTION,
+            // Usamos la misma variable normalizada aquí:
             quantity: stockQtyToConsume,
             documentRef: `PROD-RECIPE-${recipe.id}`,
             notes: `Insumo para ${input.quantityToProduce} ${recipe.finalProduct.name}`,
@@ -226,6 +293,12 @@ export class ProductionService {
     userId: string,
     inputs: ProduceItemInput[],
   ): Promise<BatchSimulationResponse> {
+    // LOG 1: Ver qué inputs está recibiendo el backend desde tu App
+    console.log(
+      'DEBUG_SIMULATION: Inputs recibidos:',
+      JSON.stringify(inputs, null, 2),
+    )
+
     const itemsResponse: SimulatedItem[] = []
     const alertsMap = new Map<string, StockAlert>() // Usamos Map para agrupar alertas
     let isViable = true
@@ -241,6 +314,11 @@ export class ProductionService {
 
       if (!recipe) continue
 
+      // LOG 2: Ver si encontró la receta y cuántos ingredientes tiene
+      console.log(
+        `DEBUG_SIMULATION: Procesando receta para ${input.itemId}, ingredientes: ${recipe.ingredients.length}`,
+      )
+
       const finalProduct = recipe.finalProduct
       const ingredientsUsage: IngredientConsumption[] = []
       let itemCanBeProduced = true
@@ -249,11 +327,36 @@ export class ProductionService {
         const ingItem = recipeIng.ingredientItem
         const factor = input.quantityToProduce / recipe.yieldQuantity
 
-        // Calculamos la cantidad necesaria con precisión
+        // // LOG 3: Ver los números del cálculo crítico
+        // console.log(
+        //   `DEBUG_SIMULATION: Ingrediente: ${ingItem.name}, Req: ${recipeIng.quantityRequired}, Factor: ${factor}, ConversionBase: ${ingItem.conversionToBaseQty}`,
+        // )
+
+        // // Calculamos la cantidad necesaria con precisión
+        // const totalRequired = Number(
+        //   (
+        //     (recipeIng.quantityRequired * factor) /
+        //     ingItem.conversionToBaseQty
+        //   ).toFixed(4),
+        // )
+
+        // 1. Obtén el factor de conversión de unidad (ajusta la importación si es necesario)
+        const unitScaleFactor = getUnitConversionFactor(
+          recipeIng.unitOfMeasure,
+          ingItem.baseUnit,
+        )
+        const packingFactor = Number(ingItem.conversionToBaseQty) || 1
+
+        // 2. LOG con todos los factores para depurar
+        console.log(
+          `DEBUG_SIMULATION: Ingrediente: ${ingItem.name}, Req: ${recipeIng.quantityRequired}, Factor: ${factor}, ConversionBase: ${packingFactor}, UnitScale: ${unitScaleFactor}`,
+        )
+
+        // 3. Cálculo normalizado y consistente
         const totalRequired = Number(
           (
             (recipeIng.quantityRequired * factor) /
-            ingItem.conversionToBaseQty
+            (unitScaleFactor * packingFactor)
           ).toFixed(4),
         )
 
@@ -264,7 +367,15 @@ export class ProductionService {
 
         const currentAvailable = virtualStockMap.get(ingItem.id) ?? 0
 
+        // LOG 4: Ver la comparación que falla
+        console.log(
+          `DEBUG_SIMULATION: Comparando: Disponible=${currentAvailable} vs Requerido=${totalRequired}`,
+        )
+
         if (currentAvailable < totalRequired) {
+          console.log(
+            `DEBUG_SIMULATION: ¡FALLO! Stock insuficiente para ${ingItem.name}`,
+          )
           itemCanBeProduced = false
           isViable = false
 

@@ -779,12 +779,15 @@ export class ItemsService {
 
       // CASO A: Sin historial operativo real -> Update directo
       if (!hasHistory) {
+        // DEUDA TÉCNICA: 'purchaseUnit' se mantiene sincronizado con 'baseUnit' porque el modelo
+        // original del sistema requería una unidad de compra diferenciada para el asistente de edición.
+        // Debe eliminarse cuando se refactorice el modelo de Item para simplificar la unidad única.
         await queryRunner.manager.update(
           Item,
           { id: input.id, userId },
           {
             baseUnit: input.baseUnit,
-            purchaseUnit: input.purchaseUnit,
+            purchaseUnit: input.baseUnit,
             conversionToBaseQty: input.conversionToBaseQty,
           },
         )
@@ -870,7 +873,7 @@ export class ItemsService {
           .update(RecipeIngredient)
           .set({
             ingredientItemId: savedItem.id,
-            quantity: 0, // 🚩 CAMBIO: Ponemos 0 para que la receta quede "inválida"
+            quantityRequired: 0, // 🚩 CAMBIO: Ponemos 0 para que la receta quede "inválida"
           })
           .where('ingredientItemId = :oldId', { oldId: oldItem.id })
           .execute()

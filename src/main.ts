@@ -48,39 +48,7 @@ Token leído de DataStore (Inicio): 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdW
 
 
 
-REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzc5MDU0MzczLCJleHAiOjE3Nzk2NTkxNzN9.nGmBX1-0OzMJ_8olZIT39sRAx2ioF9wrrR7Mb3YtA7k
-
-{
-  "input": {
-    "finalProductId": "uuid-del-padre",
-    "yieldQuantity": 10.0,
-    "ingredients": [
-      {
-        "ingredientItemId": "uuid-ingrediente-1",
-        "quantityRequired": 2.5,
-        "unitOfMeasure": "kg",
-        "notes": "Opcional"
-      }
-    ]
-  }
-}
-
-{
-  "createItemInput": {
-    "name": "Harina de Trigo 000 x 1kg",
-    "costPrice": 450.00,
-    "salePrice": 850.00,
-    "stock": 50.0,
-    "minStockAlert": 5.0,
-    "sku": "ALIM-HARI-002",
-    "barcode": "7790987654321",
-    "baseUnit": "KG",
-    "conversionToBaseQty": 1.0
-  }
-}
-
-Carga masiva para usuarios de mas de x productos, cual podria ser el limite? darles una pequeña prueba a usuarios free.
-Debatir la creacion del excel quizas en un solo excel se podria armar el producto final ingredientes y cantidades.
+REFRESH TOKEN: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2dURaaU4yOGp1TWFzUDlpY25rTFc4anprMWYyIiwiaWF0IjoxNzgwMDAwODYxLCJleHAiOjE3ODA2MDU2NjF9._0Mbdz4pdANuYm551rEAXhKImXRe3KeSUFRRPGXTkQo
 
 
-*/
+ */
