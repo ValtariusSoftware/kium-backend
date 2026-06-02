@@ -290,6 +290,18 @@ export class RecipesService {
         await queryRunner.manager.insert(RecipeIngredient, newIngredients)
       }
 
+      // 4. Actualizar la receta (AQUÍ ESTÁ EL CAMBIO)
+      // Al actualizar la receta, asumimos que el usuario ya corrigió los ingredientes.
+      // Por eso, forzamos isRecipeStructureVerified a TRUE.
+      await queryRunner.manager.update(
+        Recipe,
+        { id, userId },
+        {
+          yieldQuantity: yieldQuantity,
+          isRecipeStructureVerified: true, // 🚩 Auto-verificación al editar
+        },
+      )
+
       // 5. Recalcular Costo Teórico
       let totalRecipeCost = 0
       const currentIngredients = ingredients || recipe.ingredients

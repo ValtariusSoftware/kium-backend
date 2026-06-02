@@ -25,6 +25,7 @@ import { ItemsFilterInput, StockStatusFilter } from './dto/items-filter.input'
 import {
   BulkUpdateItemInput,
   ReconfigureItemInput,
+  ReconfigureItemResponse,
   UpdateItemInput,
 } from './dto/update-item.input'
 import { PaginatedItems } from './types/paginated-items.type'
@@ -753,7 +754,7 @@ export class ItemsService {
   async changeItemStructure(
     userId: string,
     input: ReconfigureItemInput,
-  ): Promise<Item> {
+  ): Promise<ReconfigureItemResponse> {
     const queryRunner = this.dataSource.createQueryRunner()
     await queryRunner.connect()
     await queryRunner.startTransaction()
@@ -795,7 +796,10 @@ export class ItemsService {
           where: { id: input.id },
         })
         await queryRunner.commitTransaction()
-        return updated!
+        return {
+          item: updated!,
+          affectedRecipeIds: [], // Como no hubo clonación ni cambios de estructura complejos, enviamos vacío
+        }
       }
 
       // CASO B: Con historial -> Clonación (Versioning)
@@ -866,17 +870,39 @@ export class ItemsService {
         queryRunner,
       )
 
+      // NUEVO
+
+      let affectedRecipeIds: string[] = []
+
       // 5. Migración de dependencias (Recetas e Ingredientes)
       if (oldItem.isIngredient) {
+        // A. Actualizamos el puntero del ingrediente al nuevo ID
         await queryRunner.manager
           .createQueryBuilder()
           .update(RecipeIngredient)
           .set({
             ingredientItemId: savedItem.id,
-            quantityRequired: 0, // 🚩 CAMBIO: Ponemos 0 para que la receta quede "inválida"
+            // Mantenemos la lógica de poner quantity en 0 para invalidar visualmente
+            quantityRequired: 0,
           })
           .where('ingredientItemId = :oldId', { oldId: oldItem.id })
           .execute()
+
+        // B. Buscamos los IDs de las recetas antes de invalidarlas
+        const affectedRecipes = await queryRunner.manager
+          .createQueryBuilder(RecipeIngredient, 'ri')
+          .select('DISTINCT ri.recipeId', 'recipeId')
+          .where('ri.ingredientItemId = :newId', { newId: savedItem.id })
+          .getRawMany()
+
+        affectedRecipeIds = affectedRecipes.map((r) => r.recipeId)
+
+        // C. Marcamos como no verificadas (tu lógica actual)
+        if (affectedRecipeIds.length > 0) {
+          await queryRunner.manager.update(Recipe, affectedRecipeIds, {
+            isRecipeStructureVerified: false,
+          })
+        }
       }
 
       if (oldItem.isProduced) {
@@ -885,14 +911,14 @@ export class ItemsService {
           .update(Recipe)
           .set({
             finalProductId: savedItem.id,
-            // Opcional: Si tienes un campo isDraft o isVerified en Recipe, ponlo en false.
+            isRecipeStructureVerified: false, // El producto final tiene su receta invalidada tras la clonación
           })
           .where('finalProductId = :oldId', { oldId: oldItem.id })
           .execute()
       }
 
       await queryRunner.commitTransaction()
-      return savedItem
+      return { item: savedItem, affectedRecipeIds }
     } catch (err) {
       await queryRunner.rollbackTransaction()
       this.handleDuplicateError(err)
