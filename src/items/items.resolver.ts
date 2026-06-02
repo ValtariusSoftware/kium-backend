@@ -18,6 +18,7 @@ import { ItemsFilterInput } from './dto/items-filter.input'
 import {
   BulkUpdateItemInput,
   ReconfigureItemInput,
+  ReconfigureItemResponse,
   UpdateItemInput,
 } from './dto/update-item.input'
 import { PaginatedItems } from './types/paginated-items.type'
@@ -209,11 +210,12 @@ export class ItemsResolver {
   }
 
   // Mutation para cambiar unidad base/factor o clonar
-  @Mutation(() => Item)
+  @Mutation(() => ReconfigureItemResponse)
   async changeItemStructure(
     @Args('input') input: ReconfigureItemInput,
-    @CurrentUser() user: User, // Usamos el decorador directamente
-  ): Promise<Item> {
+    @CurrentUser() user: User,
+  ): Promise<ReconfigureItemResponse> {
+    // <--- AQUÍ EL CAMBIO
     return this.itemsService.changeItemStructure(user.id, input)
   }
 

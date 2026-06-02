@@ -60,6 +60,14 @@ export class Recipe {
   @Field(() => [RecipeIngredient])
   ingredients: RecipeIngredient[]
 
+  @Column({
+    type: 'boolean',
+    name: 'is_recipe_structure_verified',
+    default: true, // Las recetas viejas nacen verificadas
+  })
+  @Field(() => Boolean)
+  isRecipeStructureVerified: boolean
+
   @CreateDateColumn({ type: 'timestamp', name: 'created_at' })
   @Field()
   createdAt: Date

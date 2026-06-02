@@ -1,6 +1,6 @@
-import { InputType, Field, ID, Float } from '@nestjs/graphql'
+import { InputType, Field, ID, Float, ObjectType } from '@nestjs/graphql'
 import { IsEnum, IsNumber, IsOptional, IsUUID, Min } from 'class-validator'
-import { BaseUnit } from '../entities/item.entity'
+import { BaseUnit, Item } from '../entities/item.entity'
 import { Transform } from 'class-transformer'
 
 @InputType()
@@ -78,4 +78,13 @@ export class ReconfigureItemInput {
   @Field(() => Float)
   @IsNumber()
   conversionToBaseQty: number
+}
+
+@ObjectType()
+export class ReconfigureItemResponse {
+  @Field(() => Item)
+  item: Item
+
+  @Field(() => [ID], { nullable: true })
+  affectedRecipeIds?: string[] // IDs de recetas que requieren actualización
 }

@@ -39,6 +39,7 @@ type Recipe {
   userId: String!
   yieldQuantity: Float!
   ingredients: [RecipeIngredient!]!
+  isRecipeStructureVerified: Boolean!
   createdAt: DateTime!
   updatedAt: DateTime!
 }
@@ -195,6 +196,11 @@ type BulkItemError {
 type BulkItemResponse {
   created: [Item!]!
   errors: [BulkItemError!]!
+}
+
+type ReconfigureItemResponse {
+  item: Item!
+  affectedRecipeIds: [ID!]
 }
 
 type PaginatedItems {
@@ -404,7 +410,7 @@ type Mutation {
   removeItem(id: ID!): Boolean!
   removeItemsBulk(ids: [ID!]!): Boolean!
   updateItemsBulk(inputs: [BulkUpdateItemInput!]!): [Item!]!
-  changeItemStructure(input: ReconfigureItemInput!): Item!
+  changeItemStructure(input: ReconfigureItemInput!): ReconfigureItemResponse!
   verifyItemStructure(id: ID!): Item!
 
   """
