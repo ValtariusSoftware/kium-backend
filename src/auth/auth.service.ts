@@ -104,7 +104,7 @@ export class AuthService {
     const { accessToken, refreshToken } = this.generateTokens(user.id)
 
     // Devolver la carga útil completa
-    console.log(refreshToken)
+    // console.log(refreshToken)
     return {
       user,
       accessToken,
