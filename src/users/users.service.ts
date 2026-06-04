@@ -6,11 +6,13 @@ import {
   InternalServerErrorException,
   NotFoundException,
   UnauthorizedException,
+  Inject,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { AccessLevel, SubscriptionStatus, User } from './entities/user.entity'
 import { UserErrorCode } from './enums/user-error-code.enum'
+import * as admin from 'firebase-admin'
 
 // 🚨 Definimos una interfaz para el payload del token decodificado de Firebase
 // Usamos solo los campos necesarios
@@ -28,6 +30,7 @@ export class UsersService {
     // Inyectamos el repositorio de la entidad User
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @Inject('FIREBASE_ADMIN') private readonly firebaseApp: admin.app.App,
   ) {}
 
   // Método para buscar todos los usuarios
@@ -177,43 +180,48 @@ export class UsersService {
   }
 
   async deleteAccount(user: User | null): Promise<boolean> {
-    // 1. Validación de Autenticación al estilo Kium
+    // 1. Validaciones previas (se mantienen igual)
     if (!user || !user.id) {
-      this.logger.warn(
-        'Intento de eliminación de cuenta bloqueado: Usuario no autenticado.',
-      )
       throw new UnauthorizedException(UserErrorCode.USER_NOT_AUTHENTICATED)
     }
 
-    // 2. Validación de Existencia en DB
     const userExists = await this.usersRepository.findOne({
       where: { id: user.id },
     })
     if (!userExists) {
-      this.logger.warn(
-        `Intento de eliminación fallido: ID=${user.id} no existe en la base de datos.`,
-      )
       throw new NotFoundException(UserErrorCode.USER_NOT_FOUND)
     }
 
     try {
-      this.logger.log(
-        `Iniciando borrado ON DELETE CASCADE para: ID=${user.id}, Email=${user.email}`,
-      )
+      this.logger.log(`Iniciando borrado para: ID=${user.id}`)
 
-      // 3. Destrucción del registro
+      // --- AQUÍ ESTÁ EL CAMBIO ---
+      try {
+        await this.firebaseApp.auth().deleteUser(user.id)
+        this.logger.log(`Firebase Auth eliminado: ${user.id}`)
+      } catch (fbError: any) {
+        // Si el usuario no existe en Firebase, lo logueamos pero seguimos adelante
+        if (fbError.code === 'auth/user-not-found') {
+          this.logger.warn(
+            `Usuario ${user.id} no encontrado en Firebase. Continuando a Postgres.`,
+          )
+        } else {
+          // Si es otro error de Firebase, lo propagamos
+          throw fbError
+        }
+      }
+      // ----------------------------
+
+      // 2. Destrucción del registro en Postgres
+      // Como ya configuramos ON DELETE CASCADE, esto borrará todo automáticamente
       await this.usersRepository.delete(user.id)
+      this.logger.log(`Postgres eliminado: ${user.id}`)
 
-      this.logger.log(`Cuenta eliminada de raíz con éxito: ID=${user.id}`)
       return true
     } catch (error) {
-      const err = error as Error
       this.logger.error(
-        `Error crítico al borrar cuenta ${user.id}: ${err.message}`,
-        err.stack,
+        `Error crítico al borrar cuenta ${user.id}: ${(error as Error).message}`,
       )
-
-      // Error genérico controlado si explota la conexión o la base de datos
       throw new InternalServerErrorException(
         UserErrorCode.DELETE_ACCOUNT_FAILED,
       )

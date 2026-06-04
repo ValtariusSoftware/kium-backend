@@ -94,7 +94,7 @@ export class Item {
   @Column({ type: 'varchar', length: 255, name: 'user_id' })
   userId: string
 
-  @ManyToOne(() => User, (user) => user.items)
+  @ManyToOne(() => User, (user) => user.items, { onDelete: 'CASCADE' }) // <--- AGREGAR
   @JoinColumn({ name: 'user_id' })
   user: User
 

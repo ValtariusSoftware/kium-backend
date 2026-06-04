@@ -12,6 +12,7 @@ import { TransactionType } from '../enums/transaction-type.enum'
 import { Sale } from 'src/sales/entities/sale.entity'
 
 import { ColumnNumericTransformer } from 'src/common/transformers/numeric.transformer'
+import { User } from 'src/users/entities/user.entity'
 
 const numericTransformer = new ColumnNumericTransformer()
 
@@ -21,6 +22,11 @@ export class InventoryTransaction {
   @PrimaryGeneratedColumn('uuid')
   @Field(() => ID)
   id: string
+
+  // Agrega la relación ManyToOne para que el CASCADE funcione
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'user_id' })
+  user: User
 
   @Column({ type: 'uuid', name: 'item_id' })
   itemId: string
