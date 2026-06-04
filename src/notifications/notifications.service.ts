@@ -179,10 +179,10 @@ export class NotificationsService {
   // @Cron(CronExpression.EVERY_MINUTE)
 
   // 🚀 ESCENARIO C (Producción - Comentado): Corre a las 10:00 AM diario, Gap de 24 hs.
-  // @Cron('0 10 * * *')
+  @Cron('0 10 * * *')
 
   // 🔍 ESCENARIO B (Prueba Media - ACTIVO): Corre exactamente cada 1 hora buscando impactos de hace 1 hora.
-  @Cron('0 * * * *') // ⏳ Se ejecuta al minuto 0 de cada 1 hora
+  // @Cron('0 * * * *') // ⏳ Se ejecuta al minuto 0 de cada 1 hora
   async handleSubscriptionRetargeting() {
     this.logger.log('Ejecutando motor de retargeting escalable...')
 
@@ -190,7 +190,7 @@ export class NotificationsService {
     // Inmediatez: 1 * 60 * 1000 (1 Minuto)
     // Prueba Media: 1 * 60 * 60 * 1000 (2 Horas)
     // Producción: 24 * 60 * 60 * 1000 (24 Horas)
-    const TIME_GAP_MS = 1 * 60 * 60 * 1000
+    const TIME_GAP_MS = 24 * 60 * 60 * 1000
     const testTimeGap = new Date(Date.now() - TIME_GAP_MS)
 
     // 1. Buscamos impactos pendientes en la nueva tabla intermedia

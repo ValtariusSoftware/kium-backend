@@ -57,7 +57,7 @@ export class Sale {
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date
 
-  @ManyToOne(() => User)
+  @ManyToOne(() => User, { onDelete: 'CASCADE' }) // <--- AGREGAR
   @JoinColumn({ name: 'user_id' })
   user: User
 

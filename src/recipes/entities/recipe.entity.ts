@@ -35,7 +35,7 @@ export class Recipe {
   finalProductId: string
 
   // Relación con el Usuario
-  @ManyToOne(() => User, (user) => user.recipes)
+  @ManyToOne(() => User, (user) => user.recipes, { onDelete: 'CASCADE' }) // <--- AGREGAR
   @JoinColumn({ name: 'user_id' })
   user: User
 
@@ -55,7 +55,7 @@ export class Recipe {
 
   // 2. Relación con los Ingredientes
   @OneToMany(() => RecipeIngredient, (ingredient) => ingredient.recipe, {
-    cascade: ['insert'],
+    cascade: true,
   })
   @Field(() => [RecipeIngredient])
   ingredients: RecipeIngredient[]

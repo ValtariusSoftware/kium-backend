@@ -29,7 +29,7 @@ export class RecipeIngredient {
   @Column('uuid', { name: 'recipe_id' })
   recipeId: string
 
-  @ManyToOne(() => Item, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => Item, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'ingredient_item_id' })
   @Field(() => Item)
   ingredientItem: Item
