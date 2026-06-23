@@ -6,6 +6,8 @@ import { ItemsResolver } from './items.resolver'
 import { RecipesModule } from 'src/recipes/recipes.module'
 import { InventoryTransactionsModule } from 'src/inventory-transactions/inventory-transactions.module'
 import { SubscriptionsModule } from 'src/subscriptions/subscriptions.module'
+import { ExcelParserService } from 'src/excel/excel-parser.service'
+import { ExcelModule } from 'src/excel/excel.module'
 
 @Module({
   imports: [
@@ -13,8 +15,9 @@ import { SubscriptionsModule } from 'src/subscriptions/subscriptions.module'
     forwardRef(() => RecipesModule),
     forwardRef(() => InventoryTransactionsModule),
     forwardRef(() => SubscriptionsModule),
+    ExcelModule,
   ],
-  providers: [ItemsService, ItemsResolver],
+  providers: [ItemsService, ItemsResolver, ExcelParserService],
   exports: [ItemsService],
 })
 export class ItemsModule {}
