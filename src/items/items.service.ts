@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, DataSource, In } from 'typeorm'
-import { Item } from './entities/item.entity'
+import { BaseUnit, Item } from './entities/item.entity'
 import { AccessLevel } from '../users/entities/user.entity' // Asumiendo que esta es la ruta correcta
 import {
   BulkItemError,
@@ -36,6 +36,7 @@ import { Recipe } from 'src/recipes/entities/recipe.entity'
 import { ProductType } from './enums/product-type'
 import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
 import { SubscriptionFeatureSlug } from 'src/subscriptions/enums/subscription-feature-slug.enum'
+import { nanoid } from 'nanoid'
 
 interface DatabaseError extends Error {
   code?: string
@@ -430,6 +431,20 @@ export class ItemsService {
     for (let i = 0; i < inputs.length; i++) {
       const input = inputs[i]
 
+      // 1. Sanitización de seguridad (Valores por defecto)
+      const safeInput = {
+        ...input,
+        baseUnit: input.baseUnit || BaseUnit.UNIT,
+        conversionToBaseQty:
+          input.conversionToBaseQty && input.conversionToBaseQty > 0
+            ? input.conversionToBaseQty
+            : 1,
+      }
+      const finalSku =
+        safeInput.sku && safeInput.sku.trim() !== ''
+          ? safeInput.sku
+          : `K-${nanoid(8).toUpperCase()}`
+
       if (currentCount + createdItemsIds.length >= capacityLimit) {
         errorReport.push({
           row: i + 1,
@@ -449,7 +464,8 @@ export class ItemsService {
         // const roles = this.calculateItemRoles(cleanCost, cleanSale)
         const roles = this.calculateItemRoles(input)
         const newItem = queryRunner.manager.create(Item, {
-          ...input,
+          ...safeInput,
+          sku: finalSku,
           ...roles,
           costPrice: cleanCost,
           salePrice: cleanSale,

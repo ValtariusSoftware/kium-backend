@@ -26,9 +26,16 @@ import { AppController } from './app.controller'
 import { SubscriptionsModule } from './subscriptions/subscriptions.module'
 import { NotificationsModule } from './notifications/notifications.module'
 import { ScheduleModule } from '@nestjs/schedule'
-
+import { ExcelModule } from './excel/excel.module'
+import { ServeStaticModule } from '@nestjs/serve-static'
+import * as path from 'path'
 @Module({
   imports: [
+    // 1. Agregamos el módulo para servir archivos
+    ServeStaticModule.forRoot({
+      rootPath: path.join(process.cwd(), 'temp-excels'),
+      serveRoot: '/temp-excels',
+    }),
     ConfigModule.forRoot({ isGlobal: true, load: [appConfig] }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -50,6 +57,7 @@ import { ScheduleModule } from '@nestjs/schedule'
     FirebaseModule,
     UsersModule,
     AuthModule,
+    ExcelModule,
     ItemsModule,
     RecipesModule,
     ProductionModule,

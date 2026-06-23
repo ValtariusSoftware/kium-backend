@@ -27,13 +27,20 @@ import { RecipesLoader } from 'src/recipes/recipes.loader'
 import { Recipe } from 'src/recipes/entities/recipe.entity'
 import { RecipesService } from 'src/recipes/recipes.service'
 import { InventoryTransactionsService } from 'src/inventory-transactions/inventory-transactions.service'
+import { ExcelParserService } from 'src/excel/excel-parser.service'
+import { GraphQLUpload, FileUpload } from 'graphql-upload-ts'
+import { getProductTemplateConfig } from 'src/excel/excel.template.config'
+import { ExcelService } from 'src/excel/excel.service'
+import { EXCEL_HEADERS } from 'src/common/i18n/excel-headers'
 
 @Resolver(() => Item)
 export class ItemsResolver {
   constructor(
     private readonly itemsService: ItemsService,
+    private readonly excelParserService: ExcelParserService,
     private readonly recipesService: RecipesService,
     private readonly inventoryTransactionsService: InventoryTransactionsService,
+    private readonly excelService: ExcelService,
   ) {}
 
   @Mutation(() => Item)
@@ -104,7 +111,7 @@ export class ItemsResolver {
     return this.itemsService.update(user.id, updateItemInput)
   }
 
-  @Mutation(() => BulkItemResponse, { name: 'createItemsBulk' }) // <--- Cambio aquí
+  /*  @Mutation(() => BulkItemResponse, { name: 'createItemsBulk' }) // <--- Cambio aquí
   async createItemsBulk(
     @Args('inputs', { type: () => [CreateItemInput] })
     inputs: CreateItemInput[],
@@ -112,6 +119,40 @@ export class ItemsResolver {
   ): Promise<BulkItemResponse> {
     // <--- Y aquí
     return this.itemsService.createBulk(user.id, user.accessLevel, inputs)
+  }*/
+
+  @Mutation(() => BulkItemResponse)
+  async uploadBulkProducts(
+    @Args({ name: 'file', type: () => GraphQLUpload }) file: FileUpload,
+    @CurrentUser() user: User,
+  ): Promise<BulkItemResponse> {
+    const { createReadStream } = await file
+
+    // 1. Consumo del stream del archivo
+    const chunks: Buffer[] = []
+    for await (const chunk of createReadStream()) {
+      chunks.push(chunk as Buffer)
+    }
+    const buffer = Buffer.concat(chunks)
+
+    // 2. Parseo (aquí ya tienes la lógica de carga parcial con errores de formato)
+    const { items, errors: parserErrors } =
+      await this.excelParserService.parse(buffer)
+
+    // 3. Ejecutar la lógica de negocio (aquí valida límites, duplicados en DB, etc.)
+    // Usamos el método real que me pasaste:
+    const result = await this.itemsService.createBulk(
+      user.id,
+      user.accessLevel,
+      items,
+    )
+
+    // 4. Combinamos los errores del parseo inicial con los errores de la DB
+    // Nota: El parser marca la fila original (i+1), el servicio marca el error de DB.
+    return {
+      created: result.created,
+      errors: [...parserErrors, ...result.errors],
+    }
   }
 
   @Mutation(() => Boolean, {
@@ -225,5 +266,17 @@ export class ItemsResolver {
     @CurrentUser() user: User,
   ): Promise<Item> {
     return this.itemsService.verifyItem(user.id, id)
+  }
+
+  @Mutation(() => String)
+  async getTemplate(
+    @Args('lang') lang: string,
+    @CurrentUser() user: User, // <--- Agregamos esto
+  ): Promise<string> {
+    console.log(user)
+    console.log('Idioma recibido:', lang)
+    console.log('Cabecera disponible:', EXCEL_HEADERS.name)
+    const columnConfig = getProductTemplateConfig(lang)
+    return await this.excelService.generate(columnConfig, lang)
   }
 }

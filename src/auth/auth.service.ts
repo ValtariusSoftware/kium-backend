@@ -63,13 +63,18 @@ export class AuthService {
   /**
    * Procesa el token de Google/Firebase para iniciar sesión y devuelve tokens.
    */
-  async googleAuth(idToken: string): Promise<AuthPayload> {
+  async googleAuth(idToken: string, req: any): Promise<AuthPayload> {
     let decodedToken: admin.auth.DecodedIdToken
 
     try {
       decodedToken = await this.firebaseApp.auth().verifyIdToken(idToken)
       this.logger.log(
         `Token verificado exitosamente para: ${decodedToken.email}`,
+      )
+
+      const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress
+      this.logger.log(
+        `INTENTO DE REGISTRO DESDE IP: ${ip} para el email: ${decodedToken.email}`,
       )
     } catch (error) {
       const err = error as { message?: string }
@@ -104,7 +109,7 @@ export class AuthService {
     const { accessToken, refreshToken } = this.generateTokens(user.id)
 
     // Devolver la carga útil completa
-    // console.log(refreshToken)
+    console.log(refreshToken)
     return {
       user,
       accessToken,

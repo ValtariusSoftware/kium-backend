@@ -1,4 +1,4 @@
-import { Resolver, Mutation, Args } from '@nestjs/graphql'
+import { Resolver, Mutation, Args, Context } from '@nestjs/graphql'
 import { AuthService } from './auth.service'
 import { AuthPayload } from './entities/auth-payload.entity'
 import { Public } from 'src/common/decorators/public.decorator'
@@ -15,8 +15,10 @@ export class AuthResolver {
   })
   async googleAuth(
     @Args('idToken', { type: () => String }) idToken: string,
+    @Context() context: any,
   ): Promise<AuthPayload> {
-    return this.authService.googleAuth(idToken)
+    const req = context.req
+    return this.authService.googleAuth(idToken, req)
   }
 
   // 🚨 FIX 3: Usamos la CLASE RefreshPayload en el decorador para el retorno.

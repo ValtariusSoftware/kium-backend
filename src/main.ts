@@ -3,6 +3,7 @@ import { AppModule } from './app.module'
 import { BadRequestException, ValidationPipe } from '@nestjs/common'
 import { ConfigService } from '@nestjs/config'
 import { GqlExceptionFilter } from './utils/filters/graphql-exception.filter'
+import { graphqlUploadExpress } from 'graphql-upload-ts'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
@@ -29,7 +30,22 @@ async function bootstrap() {
     }),
   )
   app.useGlobalFilters(new GqlExceptionFilter())
+
+  app.use(graphqlUploadExpress({ maxFileSize: 10000000, maxFiles: 1 }))
+
   const port = process.env.PORT || 4000
   await app.listen(port, '0.0.0.0')
 }
 void bootstrap()
+
+/**
+ * 
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2VTV4WG5reW92UU03eXNqZ2g4eHZ2WmhhTkczIiwiaWF0IjoxNzgyMTQ1Mjk3LCJleHAiOjE3ODI3NTAwOTd9.rx9i3h43KW4sqjNYje9cghjMt_fepLUlDJimX10Twrg
+
+errores traducirlos 
+falta el dropdown de tipo de producto.
+
+borrado de archivos de la carpeta temp
+
+programar que ademas que se creen items se puedan actualizar en ese mismo servicio mediante el excel? o convendria 
+ */
