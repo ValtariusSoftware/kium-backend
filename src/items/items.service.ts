@@ -4,7 +4,6 @@ import {
   NotFoundException,
   Inject,
   forwardRef,
-  ConflictException,
   InternalServerErrorException,
   HttpException,
   BadRequestException,
@@ -33,15 +32,11 @@ import { PaginationInput } from 'src/common/dto/pagination.input'
 import { ItemErrorCode } from './enums/item-error-code.enum'
 import { RecipeIngredient } from 'src/recipes/entities/recipe-ingredient.entity'
 import { Recipe } from 'src/recipes/entities/recipe.entity'
-import { ProductType } from './enums/product-type'
 import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
 import { SubscriptionFeatureSlug } from 'src/subscriptions/enums/subscription-feature-slug.enum'
 import { nanoid } from 'nanoid'
+import { ItemsDomainService } from './items-domain.service'
 
-interface DatabaseError extends Error {
-  code?: string
-  detail?: string
-}
 @Injectable()
 export class ItemsService {
   // // Límites de capacidad total
@@ -62,76 +57,8 @@ export class ItemsService {
     private readonly inventoryTransactionsService: InventoryTransactionsService,
     @Inject(forwardRef(() => SubscriptionsService)) // Usar forwardRef si hay circularidad
     private readonly subscriptionsService: SubscriptionsService,
+    private readonly itemsDomainService: ItemsDomainService,
   ) {}
-
-  /**
-   * Infiere roles basados en precios y estado actual.
-   * @param costPrice Precio de costo actual o nuevo
-   * @param salePrice Precio de venta actual o nuevo
-   * @param currentItem (Opcional) Estado actual del ítem en DB para no pisar flags de recetas
-   */
-
-  private calculateItemRoles(input: CreateItemInput, currentItem?: Item) {
-    // Si no viene productType, usamos RESALE por defecto
-    const {
-      // costPrice,
-      salePrice,
-      productType = ProductType.RESALE,
-    } = input
-    // const hasCost = !!costPrice && costPrice > 0
-    const hasSale = !!salePrice && salePrice > 0
-
-    // BLOQUEO DE SEGURIDAD: Si el ítem ya existe, NO recalculamos roles basados en tipo.
-    // Solo actualizamos si es vendible o no basado en el precio de venta.
-    if (currentItem) {
-      return {
-        isSaleable: hasSale, // Esto puede cambiar (dejas de venderlo o empezas a venderlo)
-        isPurchasable: currentItem.isPurchasable, // SE MANTIENE
-        isIngredient: currentItem.isIngredient, // SE MANTIENE
-        isProduced: currentItem.isProduced, // SE MANTIENE
-      }
-    }
-
-    // Lógica para ítems NUEVOS (donde sí definimos la naturaleza por primera vez)
-    return {
-      isSaleable: [
-        ProductType.RESALE,
-        ProductType.PRODUCED_FINAL,
-        ProductType.HYBRID,
-      ].includes(productType),
-      isProduced: [
-        ProductType.PRODUCED_FINAL,
-        ProductType.PRODUCED_INGREDIENT,
-      ].includes(productType),
-      isPurchasable: [
-        ProductType.RESALE,
-        ProductType.PURCHASED_INGREDIENT,
-        ProductType.HYBRID,
-      ].includes(productType),
-      isIngredient: [
-        ProductType.PURCHASED_INGREDIENT,
-        ProductType.PRODUCED_INGREDIENT,
-        ProductType.HYBRID,
-      ].includes(productType),
-    }
-  }
-  /**
-   * Captura errores específicos de la base de datos (Postgres)
-   * y los transforma en excepciones amigables para el usuario.
-   */
-
-  private handleDuplicateError(err: unknown) {
-    const error = err as DatabaseError
-    if (error.code === '23505') {
-      const detail = error.detail?.toLowerCase() || ''
-      if (detail.includes('sku'))
-        throw new ConflictException(ItemErrorCode.DUPLICATE_SKU)
-      if (detail.includes('barcode'))
-        throw new ConflictException(ItemErrorCode.DUPLICATE_BARCODE)
-
-      throw new ConflictException(ItemErrorCode.DUPLICATE_ENTRY)
-    }
-  }
 
   /**
    * Crea un nuevo ítem, aplicando la validación de límite FREE/PRO,
@@ -158,6 +85,8 @@ export class ItemsService {
         accessLevel,
       )
 
+      this.itemsDomainService.validateItemIntegrity(createItemInput)
+
       const itemCount = await queryRunner.manager.count(Item, {
         where: { userId },
       })
@@ -174,7 +103,7 @@ export class ItemsService {
 
       // 3. Inferencia de Roles basada en los precios sanitizados
       // const roles = this.calculateItemRoles(cleanCostPrice, cleanSalePrice)
-      const roles = this.calculateItemRoles(createItemInput)
+      const roles = this.itemsDomainService.calculateItemRoles(createItemInput)
 
       const initialStock = createItemInput.stock || 0.0
 
@@ -220,7 +149,7 @@ export class ItemsService {
       return itemWithFinalStock
     } catch (err) {
       await queryRunner.rollbackTransaction()
-      this.handleDuplicateError(err) // Función para manejar el error 23505 (SKU/Barcode)
+      this.itemsDomainService.handleDuplicateError(err) // Función para manejar el error 23505 (SKU/Barcode)
       throw err
     } finally {
       await queryRunner.release()
@@ -288,10 +217,14 @@ export class ItemsService {
       )
     }
 
-    const limit = pagination?.limit ?? PaginationInput.DEFAULT_LIMIT
-    const offset = pagination?.offset ?? PaginationInput.DEFAULT_OFFSET
+    // REGLA: Si pagination viene explícito (o es undefined), decide qué hacer
+    if (pagination) {
+      const limit = pagination.limit ?? PaginationInput.DEFAULT_LIMIT
+      const offset = pagination.offset ?? PaginationInput.DEFAULT_OFFSET
+      query.take(limit).skip(offset)
+    }
 
-    query.orderBy('item.name', 'ASC').take(limit).skip(offset)
+    query.orderBy('item.name', 'ASC')
 
     // getManyAndCount devuelve los items Y el total de la tabla en un solo viaje
     const [items, total] = await query.getManyAndCount()
@@ -301,6 +234,21 @@ export class ItemsService {
       total,
     }
   }
+
+  /**
+   * Esta lista se lleva a la app de android y sincroniza en base a la fecha de actualizacion.
+   *
+   */
+  /*
+  async getSyncItems(userId: string, updatedSince: Date): Promise<Item[]> {
+    return this.itemsRepository.find({
+      where: {
+        userId,
+        updatedAt: MoreThan(updatedSince), // TypeORM acepta Date aquí perfectamente
+      },
+      order: { updatedAt: 'ASC' },
+    })
+  }*/
 
   /**
    * Obtiene un ítem por ID, asegurando que pertenezca al usuario especificado.
@@ -375,7 +323,10 @@ export class ItemsService {
         costPrice: item.costPrice, // Usamos el costo que ya tenía
       }
 
-      const newRoles = this.calculateItemRoles(fakeInput, item)
+      const newRoles = this.itemsDomainService.calculateItemRoles(
+        fakeInput,
+        item,
+      )
       Object.assign(item, newRoles)
     }
 
@@ -388,7 +339,7 @@ export class ItemsService {
     try {
       return await this.itemsRepository.save(item)
     } catch (err) {
-      this.handleDuplicateError(err)
+      this.itemsDomainService.handleDuplicateError(err)
       throw err
     }
   }
@@ -402,16 +353,27 @@ export class ItemsService {
     accessLevel: AccessLevel,
     inputs: CreateItemInput[],
   ): Promise<BulkItemResponse> {
-    // 1. VALIDAR LÍMITE DE BATCH (Cuántos puede subir por archivo)
-    const batchLimit = await this.subscriptionsService.getLimit(
-      SubscriptionFeatureSlug.BULK_UPLOAD,
-      accessLevel,
-    )
+    // // 1. VALIDAR LÍMITE DE BATCH (Cuántos puede subir por archivo)
+    // const batchLimit = await this.subscriptionsService.getLimit(
+    //   SubscriptionFeatureSlug.BULK_UPLOAD,
+    //   accessLevel,
+    // )
 
-    if (inputs.length > batchLimit) {
-      throw new ForbiddenException(
-        `Límite de carga masiva excedido (${batchLimit} ítems por vez).`,
+    // if (inputs.length > batchLimit) {
+    //   throw new ForbiddenException(
+    //     `Límite de carga masiva excedido (${batchLimit} ítems por vez).`,
+    //   )
+    // }
+
+    // 1. Validar límite de batch usando función privada
+    try {
+      await this.itemsDomainService.validateBulkCapacity(
+        userId,
+        accessLevel,
+        inputs.length,
       )
+    } catch (err: any) {
+      throw new ForbiddenException(err.message) // O el manejo que prefieras para el error global
     }
 
     // 2. VALIDAR CAPACIDAD TOTAL
@@ -458,11 +420,12 @@ export class ItemsService {
       await queryRunner.startTransaction()
 
       try {
+        this.itemsDomainService.validateItemIntegrity(input)
         const cleanCost = Math.round(input.costPrice || 0)
         const cleanSale = Math.round(input.salePrice || 0)
 
         // const roles = this.calculateItemRoles(cleanCost, cleanSale)
-        const roles = this.calculateItemRoles(input)
+        const roles = this.itemsDomainService.calculateItemRoles(input)
         const newItem = queryRunner.manager.create(Item, {
           ...safeInput,
           sku: finalSku,
@@ -498,26 +461,30 @@ export class ItemsService {
       } catch (err: any) {
         await queryRunner.rollbackTransaction()
 
-        let errorCode: string = ItemErrorCode.INTERNAL_ERROR // O un genérico que definas
+        // let errorCode: string = ItemErrorCode.INTERNAL_ERROR // a borrar reemplazado por lo de abajo
 
-        if (err.code === '23505') {
-          const detail = err.detail?.toLowerCase() || ''
-          if (detail.includes('sku')) {
-            errorCode = ItemErrorCode.DUPLICATE_SKU
-          } else if (detail.includes('barcode')) {
-            errorCode = ItemErrorCode.DUPLICATE_BARCODE
-          } else {
-            errorCode = ItemErrorCode.DUPLICATE_ENTRY
-          }
-        } else {
-          // Si es otro tipo de error, podrías usar el mensaje o un código genérico
-          errorCode = err.message || ItemErrorCode.INTERNAL_ERROR
-        }
+        // Si el error viene de tu validador, err.response.message (o el mensaje que arrojes)
+        // ya será el código del Enum. Asegúrate de capturarlo:
+        // let errorCode: string = err.message || ItemErrorCode.INTERNAL_ERROR
+
+        // if (err.code === '23505') {
+        //   const detail = err.detail?.toLowerCase() || ''
+        //   if (detail.includes('sku')) {
+        //     errorCode = ItemErrorCode.DUPLICATE_SKU
+        //   } else if (detail.includes('barcode')) {
+        //     errorCode = ItemErrorCode.DUPLICATE_BARCODE
+        //   } else {
+        //     errorCode = ItemErrorCode.DUPLICATE_ENTRY
+        //   }
+        // } else {
+        //   // Si es otro tipo de error, podrías usar el mensaje o un código genérico
+        //   errorCode = err.message || ItemErrorCode.INTERNAL_ERROR
+        // }
 
         errorReport.push({
           row: i + 1,
           name: input.name,
-          error: errorCode, // <-- Ahora Android recibe el código de error para traducir
+          error: this.itemsDomainService.parsePostgresError(err), // <-- Ahora Android recibe el código de error para traducir
         })
       }
       // NOTA: No hacemos release() acá, esperamos al final del bucle
@@ -535,6 +502,104 @@ export class ItemsService {
         : []
 
     return { created: finalCreatedItems, errors: errorReport }
+  }
+
+  /**
+   * Realiza una actualizacion si el producto ya existe, solo actualizaciones de catalogo.
+   * Si el producto no existe se crea llamando al metodo del update bulk
+   */
+  async upsertBulk(
+    userId: string,
+    accessLevel: AccessLevel,
+    inputs: BulkUpdateItemInput[],
+  ): Promise<BulkItemResponse> {
+    // 1. Validar límite de batch usando método encapsulado
+    try {
+      await this.itemsDomainService.validateBulkCapacity(
+        userId,
+        accessLevel,
+        inputs.length,
+      )
+    } catch (err: any) {
+      return {
+        created: [],
+        errors: [{ row: 0, name: 'Batch', error: err.message }],
+      }
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner()
+    await queryRunner.connect()
+
+    const results: Item[] = []
+    const errors: BulkItemError[] = []
+
+    // Identificamos cuáles son nuevos para procesarlos con createBulk al final o en grupo
+    const itemsToCreate: CreateItemInput[] = []
+    const inputMap = new Map<string, BulkUpdateItemInput>()
+
+    for (let i = 0; i < inputs.length; i++) {
+      const input = inputs[i]
+      // 1. Validar que el nombre sea válido
+      if (!input.name || input.name.trim() === '') {
+        errors.push({
+          row: i + 1,
+          name: 'Unknown',
+          error: ItemErrorCode.MISSING_NAME, // Asegúrate de tener este código
+        })
+        continue // Saltamos esta fila
+      }
+
+      // Ahora input.name es tratado como string seguro
+      inputMap.set(input.name, input)
+
+      await queryRunner.startTransaction()
+      try {
+        const item = await queryRunner.manager.findOne(Item, {
+          where: { userId, name: input.name },
+        })
+
+        if (item) {
+          // ACTUALIZACIÓN DE CATÁLOGO (Lógica exclusiva de update)
+          await queryRunner.manager.update(Item, item.id, {
+            barcode: input.barcode,
+            minStockAlert: input.minStockAlert,
+            salePrice: input.salePrice,
+            sku: input.sku,
+          })
+          results.push(
+            await queryRunner.manager.findOneOrFail(Item, {
+              where: { id: item.id },
+            }),
+          )
+          await queryRunner.commitTransaction()
+        } else {
+          // CREACIÓN: Delegamos al método robusto createBulk
+          await queryRunner.rollbackTransaction()
+          itemsToCreate.push(input as unknown as CreateItemInput)
+        }
+      } catch (err: any) {
+        await queryRunner.rollbackTransaction()
+        errors.push({
+          row: i + 1,
+          name: input.name || 'Unknown',
+          error: this.itemsDomainService.parsePostgresError(err),
+        })
+      }
+    }
+
+    // Ejecutamos la creación masiva de los nuevos ítems
+    if (itemsToCreate.length > 0) {
+      const creationResult = await this.createBulk(
+        userId,
+        accessLevel,
+        itemsToCreate,
+      )
+      results.push(...creationResult.created)
+      errors.push(...creationResult.errors)
+    }
+
+    await queryRunner.release()
+    return { created: results, errors }
   }
 
   /**
@@ -706,7 +771,10 @@ export class ItemsService {
             costPrice: item.costPrice,
           }
 
-          const newRoles = this.calculateItemRoles(fakeInput, item)
+          const newRoles = this.itemsDomainService.calculateItemRoles(
+            fakeInput,
+            item,
+          )
           Object.assign(item, newRoles)
         }
 
@@ -937,7 +1005,7 @@ export class ItemsService {
       return { item: savedItem, affectedRecipeIds }
     } catch (err) {
       await queryRunner.rollbackTransaction()
-      this.handleDuplicateError(err)
+      this.itemsDomainService.handleDuplicateError(err)
 
       // 1. Si el error ya es una excepción de Nest (como el NotFound o BadRequest que lanzamos arriba)
       // lo dejamos pasar tal cual para que el Filter no lo rompa.

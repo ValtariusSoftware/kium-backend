@@ -405,6 +405,7 @@ type Mutation {
   createItem(createItemInput: CreateItemInput!): Item!
   updateItem(updateItemInput: UpdateItemInput!): Item!
   uploadBulkProducts(file: Upload!): BulkItemResponse!
+  upsertBulkProducts(file: Upload!): BulkItemResponse!
 
   """Realiza un borrado lógico de un ítem"""
   removeItem(id: ID!): Boolean!
