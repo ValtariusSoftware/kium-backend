@@ -114,7 +114,9 @@ export class ItemsDomainService {
         if (hasCost)
           throw new BadRequestException(ItemErrorCode.INVALID_COST_PRICE)
         if (hasStock)
-          throw new BadRequestException(ItemErrorCode.INVALID_NUMBER)
+          throw new BadRequestException(
+            ItemErrorCode.ERR_PRODUCED_ITEM_CANNOT_HAVE_STOCK,
+          )
         break
 
       case ProductType.PRODUCED_INGREDIENT:
@@ -123,7 +125,9 @@ export class ItemsDomainService {
         if (hasSale)
           throw new BadRequestException(ItemErrorCode.INVALID_SALE_PRICE)
         if (hasStock)
-          throw new BadRequestException(ItemErrorCode.INVALID_NUMBER)
+          throw new BadRequestException(
+            ItemErrorCode.ERR_PRODUCED_ITEM_CANNOT_HAVE_STOCK,
+          )
         break
 
       default:

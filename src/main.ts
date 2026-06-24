@@ -40,7 +40,7 @@ void bootstrap()
 
 /**
  * 
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2VTV4WG5reW92UU03eXNqZ2g4eHZ2WmhhTkczIiwiaWF0IjoxNzgyMjQ4MTgxLCJleHAiOjE3ODI4NTI5ODF9.bghimWuJhcEQjiD_6rPtnen8--3yYoaVudC5YWtkQfg
+eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2VTV4WG5reW92UU03eXNqZ2g4eHZ2WmhhTkczIiwiaWF0IjoxNzgyMzA5NjI0LCJleHAiOjE3ODI5MTQ0MjR9.7j-z9RYKUDp8KAsVfHx3hqw2F7ifzyytPW7R1KZdqLQ
 
 errores traducirlos 
 falta el dropdown de tipo de producto.

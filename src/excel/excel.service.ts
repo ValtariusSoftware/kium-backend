@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common'
+import { Cron, CronExpression } from '@nestjs/schedule'
 import * as ExcelJS from 'exceljs'
 import * as fsSync from 'fs' // Para operaciones síncronas (constructor)
 import * as fs from 'fs/promises' // Para operaciones asíncronas (cleanup)
@@ -46,14 +47,21 @@ export class ExcelService {
     }
   }
 
+  // @Cron('*/5 * * * *')
+  @Cron(CronExpression.EVERY_HOUR)
+  async handleCron() {
+    console.log('Iniciando limpieza programada de archivos temporales...')
+    await this.cleanupTempFiles()
+    console.log('Limpieza finalizada.')
+  }
+
   async generate(
     columns: ColumnConfig[],
     lang: string = 'en',
   ): Promise<string> {
     // 1. Selección de idioma
     const langData = I18N_EXCEL[lang] || I18N_EXCEL['en']
-    // 1. Limpieza preventiva (Autolimpieza)
-    await this.cleanupTempFiles()
+
     const workbook = new ExcelJS.Workbook()
     const sheet = workbook.addWorksheet(langData.sheetName)
 
