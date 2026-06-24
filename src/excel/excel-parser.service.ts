@@ -28,11 +28,17 @@ export class ExcelParserService {
   async parse(
     buffer: Buffer,
   ): Promise<{ items: CreateItemInput[]; errors: BulkItemError[] }> {
+    // Validación de tamaño: 5MB máximo
+    const MAX_SIZE = 5 * 1024 * 1024
+    if (buffer.length > MAX_SIZE) {
+      throw new Error(ItemErrorCode.FILE_TOO_LARGE)
+    }
+
     const workbook = new ExcelJS.Workbook()
     await workbook.xlsx.load(new Uint8Array(buffer) as any)
 
     const sheet = workbook.getWorksheet(1)
-    if (!sheet) throw new Error('El archivo Excel no tiene hojas válidas')
+    if (!sheet) throw new Error(ItemErrorCode.INVALID_FILE)
 
     const items: CreateItemInput[] = []
     const errors: BulkItemError[] = []

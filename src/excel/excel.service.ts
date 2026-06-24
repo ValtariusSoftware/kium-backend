@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common'
 import * as ExcelJS from 'exceljs'
-import * as fs from 'fs'
+import * as fsSync from 'fs' // Para operaciones síncronas (constructor)
+import * as fs from 'fs/promises' // Para operaciones asíncronas (cleanup)
 import * as path from 'path'
+import { I18N_EXCEL } from 'src/common/i18n/excel-headers'
 import { VALIDATION_MESSAGES } from 'src/common/i18n/validation-messages.translations'
 
 export interface DropdownConfig {
@@ -20,15 +22,40 @@ export class ExcelService {
   private readonly tempDir = path.join(process.cwd(), 'temp-excels')
 
   constructor() {
-    if (!fs.existsSync(this.tempDir)) fs.mkdirSync(this.tempDir)
+    // Usamos fsSync para asegurar que la carpeta exista al arrancar
+    if (!fsSync.existsSync(this.tempDir)) fsSync.mkdirSync(this.tempDir)
+  }
+
+  private async cleanupTempFiles() {
+    try {
+      // Ahora fs es 'fs/promises', así que readdir funciona con await
+      const files = await fs.readdir(this.tempDir)
+      const now = Date.now()
+      const ONE_HOUR = 60 * 60 * 1000
+
+      for (const file of files) {
+        const filePath = path.join(this.tempDir, file)
+        const stats = await fs.stat(filePath) // Ahora stat devuelve una promesa
+
+        if (now - stats.birthtimeMs > ONE_HOUR) {
+          await fs.unlink(filePath) // Ahora unlink devuelve una promesa
+        }
+      }
+    } catch (err) {
+      console.error('Error en limpieza de archivos:', err)
+    }
   }
 
   async generate(
     columns: ColumnConfig[],
     lang: string = 'en',
   ): Promise<string> {
+    // 1. Selección de idioma
+    const langData = I18N_EXCEL[lang] || I18N_EXCEL['en']
+    // 1. Limpieza preventiva (Autolimpieza)
+    await this.cleanupTempFiles()
     const workbook = new ExcelJS.Workbook()
-    const sheet = workbook.addWorksheet('Productos')
+    const sheet = workbook.addWorksheet(langData.sheetName)
 
     // Obtenemos el mensaje de error según el idioma recibido
     const errorMessage = VALIDATION_MESSAGES[lang] || VALIDATION_MESSAGES['en']
@@ -62,7 +89,7 @@ export class ExcelService {
       }
     })
 
-    const fileName = `template_${Date.now()}.xlsx`
+    const fileName = `${langData.filePrefix}_${Date.now()}.xlsx`
     await workbook.xlsx.writeFile(path.join(this.tempDir, fileName))
     return fileName
   }

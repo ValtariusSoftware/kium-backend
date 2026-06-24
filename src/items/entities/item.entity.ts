@@ -85,6 +85,7 @@ const numericTransformer = new ColumnNumericTransformer()
 // Aseguramos que el SKU y el Barcode sean únicos solo dentro del catálogo de cada usuario
 @Unique('UQ_ITEM_SKU_PER_USER', ['userId', 'sku'])
 @Unique('UQ_ITEM_BARCODE_PER_USER', ['userId', 'barcode'])
+@Unique('UQ_ITEM_NAME_PER_USER', ['userId', 'name'])
 @ObjectType()
 export class Item {
   @PrimaryGeneratedColumn('uuid')

@@ -8,6 +8,7 @@ import { InventoryTransactionsModule } from 'src/inventory-transactions/inventor
 import { SubscriptionsModule } from 'src/subscriptions/subscriptions.module'
 import { ExcelParserService } from 'src/excel/excel-parser.service'
 import { ExcelModule } from 'src/excel/excel.module'
+import { ItemsDomainService } from './items-domain.service'
 
 @Module({
   imports: [
@@ -17,7 +18,12 @@ import { ExcelModule } from 'src/excel/excel.module'
     forwardRef(() => SubscriptionsModule),
     ExcelModule,
   ],
-  providers: [ItemsService, ItemsResolver, ExcelParserService],
-  exports: [ItemsService],
+  providers: [
+    ItemsService,
+    ItemsDomainService,
+    ItemsResolver,
+    ExcelParserService,
+  ],
+  exports: [ItemsService, ItemsDomainService],
 })
 export class ItemsModule {}

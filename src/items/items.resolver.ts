@@ -61,6 +61,15 @@ export class ItemsResolver {
     return this.itemsService.getItems(user.id, filters, pagination)
   }
 
+  /*
+  @Query(() => [Item], { name: 'syncItems' })
+  async getSyncItems(
+    @CurrentUser() user: User,
+    @Args('updatedSince') updatedSince: string, // Fecha ISO recibida de la app
+  ): Promise<Item[]> {
+    return this.itemsService.getSyncItems(user.id, new Date(updatedSince))
+  }*/
+
   @Query(() => Item, { name: 'item', nullable: true })
   async findOne(
     @Args('id', { type: () => ID }) id: string,
@@ -149,6 +158,35 @@ export class ItemsResolver {
 
     // 4. Combinamos los errores del parseo inicial con los errores de la DB
     // Nota: El parser marca la fila original (i+1), el servicio marca el error de DB.
+    return {
+      created: result.created,
+      errors: [...parserErrors, ...result.errors],
+    }
+  }
+
+  @Mutation(() => BulkItemResponse)
+  async upsertBulkProducts(
+    @Args({ name: 'file', type: () => GraphQLUpload }) file: FileUpload,
+    @CurrentUser() user: User,
+  ): Promise<BulkItemResponse> {
+    const { createReadStream } = await file
+    const chunks: Buffer[] = []
+    for await (const chunk of createReadStream()) {
+      chunks.push(chunk as Buffer)
+    }
+    const buffer = Buffer.concat(chunks)
+
+    // 1. Parseamos
+    const { items, errors: parserErrors } =
+      await this.excelParserService.parse(buffer)
+
+    // 2. Ejecutamos el upsert inteligente (pasando el accessLevel)
+    const result = await this.itemsService.upsertBulk(
+      user.id,
+      user.accessLevel, // <--- Aquí validamos la suscripción
+      items as unknown as BulkUpdateItemInput[],
+    )
+
     return {
       created: result.created,
       errors: [...parserErrors, ...result.errors],

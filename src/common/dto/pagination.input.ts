@@ -13,7 +13,7 @@ export class PaginationInput {
   })
   @IsInt()
   @Min(1)
-  @Max(500) // 👈 Límite de seguridad para que nadie rompa la DB pidiendo 10.000
+  @Max(100) // 👈 Límite de seguridad para que nadie rompa la DB pidiendo 10.000
   @IsOptional()
   limit: number = PaginationInput.DEFAULT_LIMIT
 

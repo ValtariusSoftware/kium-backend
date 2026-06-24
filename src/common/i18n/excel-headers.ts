@@ -1,3 +1,12 @@
+export const I18N_EXCEL = {
+  en: { sheetName: 'Products', filePrefix: 'Kium_Template' },
+  es: { sheetName: 'Productos', filePrefix: 'Kium_Plantilla' },
+  de: { sheetName: 'Produkte', filePrefix: 'Kium_Vorlage' },
+  fr: { sheetName: 'Produits', filePrefix: 'Kium_Modèle' },
+  it: { sheetName: 'Prodotti', filePrefix: 'Kium_Modello' },
+  pt: { sheetName: 'Produtos', filePrefix: 'Kium_Modelo' },
+}
+
 export const EXCEL_HEADERS: Record<string, Record<string, string>> = {
   name: {
     en: 'Product Name',
