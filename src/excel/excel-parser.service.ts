@@ -52,40 +52,64 @@ export class ExcelParserService {
           throw new Error(ItemErrorCode.NAME_EMPTY)
 
         // Validación de números
-        const costRaw = row.getCell(3).value
+        // const costRaw = row.getCell(3).value
+        // const costPrice =
+        //   costRaw !== null && costRaw !== undefined && costRaw !== ''
+        //     ? Number(costRaw)
+        //     : 0
+        // if (isNaN(costPrice)) throw new Error(ItemErrorCode.INVALID_COST_PRICE)
+
+        // const saleRaw = row.getCell(4).value
+        // const salePrice =
+        //   saleRaw !== null && saleRaw !== undefined && saleRaw !== ''
+        //     ? Number(saleRaw)
+        //     : 0
+        // if (isNaN(salePrice)) throw new Error(ItemErrorCode.INVALID_SALE_PRICE)
+
+        // const conversion = Number(row.getCell(6).value || 1)
+        // if (isNaN(conversion) || conversion <= 0)
+        //   throw new Error(ItemErrorCode.INVALID_CONVERSION)
+
+        const costRaw = row.getCell(2).value
         const costPrice =
           costRaw !== null && costRaw !== undefined && costRaw !== ''
             ? Number(costRaw)
             : 0
         if (isNaN(costPrice)) throw new Error(ItemErrorCode.INVALID_COST_PRICE)
 
-        const saleRaw = row.getCell(4).value
+        const saleRaw = row.getCell(3).value
         const salePrice =
           saleRaw !== null && saleRaw !== undefined && saleRaw !== ''
             ? Number(saleRaw)
             : 0
         if (isNaN(salePrice)) throw new Error(ItemErrorCode.INVALID_SALE_PRICE)
 
-        const conversion = Number(row.getCell(6).value || 1)
-        if (isNaN(conversion) || conversion <= 0)
-          throw new Error(ItemErrorCode.INVALID_CONVERSION)
-
         // Mapeos
-        const unitLabel = row.getCell(5).value?.toString() || ''
-        const typeLabel = row.getCell(2).value?.toString() || ''
+        // const unitLabel = row.getCell(5).value?.toString() || ''
+        // const typeLabel = row.getCell(2).value?.toString() || ''
 
         items.push({
           name: name,
-          productType: this.findProductTypeKey(typeLabel),
+          // productType: this.findProductTypeKey(typeLabel),
+          productType: ProductType.RESALE, // <--- Hardcodealo acá, sin leer el Excel
           costPrice: costPrice,
           salePrice: salePrice,
-          baseUnit: this.findBaseUnitKey(unitLabel),
-          conversionToBaseQty: conversion,
-          stock: Number(row.getCell(7).value || 0),
-          minStockAlert: Number(row.getCell(8).value || 0),
-          sku: row.getCell(9).value?.toString()?.trim() || undefined,
-          barcode: row.getCell(10).value?.toString()?.trim() || undefined,
-          isInitialized: Number(row.getCell(7).value || 0) > 0,
+          // baseUnit: this.findBaseUnitKey(unitLabel),
+          // conversionToBaseQty: conversion,
+          baseUnit: BaseUnit.UNIT, // <--- Hardcodealo acá, sin leer el Excel
+          conversionToBaseQty: 1, // <--- Hardcodealo acá, sin leer el Excel
+          // stock: Number(row.getCell(7).value || 0),
+          // minStockAlert: Number(row.getCell(8).value || 0),
+          // sku: row.getCell(9).value?.toString()?.trim() || undefined,
+          // barcode: row.getCell(10).value?.toString()?.trim() || undefined,
+          // isInitialized: Number(row.getCell(7).value || 0) > 0,
+
+          // AHORA TENÉS QUE APUNTAR A LA COLUMNA DONDE REALMENTE ESTÁN LOS DATOS
+          stock: Number(row.getCell(4).value || 0), // Ejemplo: Si Stock estaba en la 7, ahora es la 4
+          minStockAlert: Number(row.getCell(5).value || 0),
+          sku: row.getCell(6).value?.toString()?.trim() || undefined,
+          barcode: row.getCell(7).value?.toString()?.trim() || undefined,
+          isInitialized: Number(row.getCell(4).value || 0) > 0,
         })
       } catch (e: any) {
         errors.push({
