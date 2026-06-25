@@ -169,22 +169,51 @@ export class ItemsResolver {
     @Args({ name: 'file', type: () => GraphQLUpload }) file: FileUpload,
     @CurrentUser() user: User,
   ): Promise<BulkItemResponse> {
+    // LOG 1: Verificar que el objeto file llega
+    console.log('LOG_DEBUG: Inicio de mutación. Archivo:', file?.filename)
     const { createReadStream } = await file
     const chunks: Buffer[] = []
-    for await (const chunk of createReadStream()) {
-      chunks.push(chunk as Buffer)
+    // LOG 2: Verificar que el stream inicia
+    console.log('LOG_DEBUG: Iniciando lectura de stream...')
+    try {
+      for await (const chunk of createReadStream()) {
+        chunks.push(chunk as Buffer)
+      }
+    } catch (streamError) {
+      // LOG 3: Si el stream falla en Staging, aquí saldrá
+      console.error('LOG_DEBUG: Error al leer el stream:', streamError)
+      throw streamError
     }
     const buffer = Buffer.concat(chunks)
+    // LOG 4: Verificar tamaño real del archivo
+    console.log(
+      'LOG_DEBUG: Buffer concatenado. Tamaño:',
+      buffer.length,
+      'bytes',
+    )
 
     // 1. Parseamos
     const { items, errors: parserErrors } =
       await this.excelParserService.parse(buffer)
+    console.log(
+      'LOG_DEBUG: Items parseados:',
+      items.length,
+      'Errores de parseo:',
+      parserErrors.length,
+    )
 
     // 2. Ejecutamos el upsert inteligente (pasando el accessLevel)
     const result = await this.itemsService.upsertBulk(
       user.id,
       user.accessLevel, // <--- Aquí validamos la suscripción
       items as unknown as BulkUpdateItemInput[],
+    )
+
+    console.log(
+      'LOG_DEBUG: Resultado de upsertBulk - Creados:',
+      result.created.length,
+      'Errores:',
+      result.errors.length,
     )
 
     return {
