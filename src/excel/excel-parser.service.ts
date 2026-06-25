@@ -45,6 +45,10 @@ export class ExcelParserService {
     const errors: BulkItemError[] = []
 
     sheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
+      // LOG PARA VER QUÉ HAY EN LA FILA
+      console.log(
+        `LOG_DEBUG: Fila ${rowNumber} - Contenido (Celda 1): ${row.getCell(1).value}`,
+      )
       if (rowNumber === 1) return
       // 2. LOG de diagnóstico: Esto te dirá si el servidor está leyendo algo o si las celdas vienen vacías
       console.log(
