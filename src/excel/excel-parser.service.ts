@@ -38,6 +38,7 @@ export class ExcelParserService {
     await workbook.xlsx.load(new Uint8Array(buffer) as any)
 
     const sheet = workbook.getWorksheet(1)
+    console.log('Sheet found:', !!sheet) // LOG PURO
     if (!sheet) throw new Error(ItemErrorCode.INVALID_FILE)
 
     const items: CreateItemInput[] = []
