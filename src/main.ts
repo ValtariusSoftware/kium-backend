@@ -7,6 +7,12 @@ import { graphqlUploadExpress } from 'graphql-upload-ts'
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule)
+  // ESTO ES LO ÚNICO QUE TIENE QUE ESTAR AQUÍ PARA SABER SI EL REQUEST LLEGA
+  app.use((req, res, next) => {
+    console.log('LOG_DEBUG: Petición recibida en URL:', req.url)
+    console.log('LOG_DEBUG: Headers:', JSON.stringify(req.headers))
+    next()
+  })
   const configService = app.get(ConfigService)
   // Habilitar CORS
   app.enableCors({
