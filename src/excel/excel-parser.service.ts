@@ -44,11 +44,19 @@ export class ExcelParserService {
     const items: CreateItemInput[] = []
     const errors: BulkItemError[] = []
 
-    sheet.eachRow({ includeEmpty: false }, (row, rowNumber) => {
+    sheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
       if (rowNumber === 1) return
-
+      // 2. LOG de diagnóstico: Esto te dirá si el servidor está leyendo algo o si las celdas vienen vacías
+      console.log(
+        `LOG_DEBUG: Fila ${rowNumber} - Celda 1 (Nombre): "${row.getCell(1).value}"`,
+      )
       try {
         const name = row.getCell(1).value?.toString()
+        // Si el nombre viene vacío, loguealo también
+        if (name === '') {
+          console.log(`LOG_DEBUG: Fila ${rowNumber} ignorada por nombre vacío`)
+          return // O throw new Error(ItemErrorCode.NAME_EMPTY) si quieres que cuente como error
+        }
         if (!name || name.trim() === '')
           throw new Error(ItemErrorCode.NAME_EMPTY)
 
@@ -113,6 +121,7 @@ export class ExcelParserService {
           isInitialized: Number(row.getCell(4).value || 0) > 0,
         })
       } catch (e: any) {
+        console.error(`LOG_DEBUG: Error en fila ${rowNumber}:`, e.message)
         errors.push({
           row: rowNumber,
           name: row.getCell(1).value?.toString() || 'Sin nombre',
