@@ -36,6 +36,7 @@ import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
 import { SubscriptionFeatureSlug } from 'src/subscriptions/enums/subscription-feature-slug.enum'
 import { nanoid } from 'nanoid'
 import { ItemsDomainService } from './items-domain.service'
+import { ProductType } from './enums/product-type'
 
 @Injectable()
 export class ItemsService {
@@ -392,6 +393,17 @@ export class ItemsService {
 
     for (let i = 0; i < inputs.length; i++) {
       const input = inputs[i]
+
+      // --- NUEVA VALIDACIÓN: Solo Reventa ---
+      if (input.productType !== ProductType.RESALE) {
+        errorReport.push({
+          row: i + 1,
+          name: input.name,
+          error: ItemErrorCode.UNSUPPORTED_PRODUCT_TYPE, // Asegúrate de agregar este código
+        })
+        continue // Saltamos este producto
+      }
+      // --------------------------------------
 
       // 1. Sanitización de seguridad (Valores por defecto)
       const safeInput = {
