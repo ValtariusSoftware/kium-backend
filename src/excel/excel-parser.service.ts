@@ -39,15 +39,18 @@ export class ExcelParserService {
 
     const sheet = workbook.getWorksheet(1)
     console.log('Sheet found:', !!sheet) // LOG PURO
-    if (!sheet) throw new Error(ItemErrorCode.INVALID_FILE)
 
+    if (!sheet) throw new Error(ItemErrorCode.INVALID_FILE)
+    console.log(
+      `LOG_DEBUG: Total de filas detectadas por ExcelJS: ${sheet.rowCount}`,
+    )
     const items: CreateItemInput[] = []
     const errors: BulkItemError[] = []
 
     sheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
       // LOG PARA VER QUÉ HAY EN LA FILA
       console.log(
-        `LOG_DEBUG: Fila ${rowNumber} - Contenido (Celda 1): ${row.getCell(1).value}`,
+        `LOG_DEBUG: Procesando fila ${rowNumber}, Nombre: "${row.getCell(1).value}"`,
       )
       if (rowNumber === 1) return
       // 2. LOG de diagnóstico: Esto te dirá si el servidor está leyendo algo o si las celdas vienen vacías
@@ -58,7 +61,7 @@ export class ExcelParserService {
         const name = row.getCell(1).value?.toString()
         // Si el nombre viene vacío, loguealo también
         if (name === '') {
-          console.log(`LOG_DEBUG: Fila ${rowNumber} ignorada por nombre vacío`)
+          console.log(`LOG_DEBUG: Fila ${rowNumber} ignorada: Nombre vacío`)
           return // O throw new Error(ItemErrorCode.NAME_EMPTY) si quieres que cuente como error
         }
         if (!name || name.trim() === '')
@@ -125,7 +128,7 @@ export class ExcelParserService {
           isInitialized: Number(row.getCell(4).value || 0) > 0,
         })
       } catch (e: any) {
-        console.error(`LOG_DEBUG: Error en fila ${rowNumber}:`, e.message)
+        console.error(`LOG_DEBUG: ERROR FATAL EN FILA ${rowNumber}:`, e.message)
         errors.push({
           row: rowNumber,
           name: row.getCell(1).value?.toString() || 'Sin nombre',
