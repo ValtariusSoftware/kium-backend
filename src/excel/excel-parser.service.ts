@@ -47,22 +47,25 @@ export class ExcelParserService {
     const items: CreateItemInput[] = []
     const errors: BulkItemError[] = []
 
-    sheet.eachRow({ includeEmpty: true }, (row, rowNumber) => {
-      // LOG PARA VER QUÉ HAY EN LA FILA
+    // Reemplazamos sheet.eachRow por un bucle for que garantice la lectura
+    console.log(`LOG_DEBUG: Intentando leer manualmente hasta la fila 10...`)
+
+    for (let rowNumber = 2; rowNumber <= 10; rowNumber++) {
+      const row = sheet.getRow(rowNumber)
+
+      // LOG de diagnóstico
       console.log(
-        `LOG_DEBUG: Procesando fila ${rowNumber}, Nombre: "${row.getCell(1).value}"`,
+        `LOG_DEBUG: Procesando fila ${rowNumber}, Celda 1 bruta: "${row.getCell(1).value}"`,
       )
-      if (rowNumber === 1) return
-      // 2. LOG de diagnóstico: Esto te dirá si el servidor está leyendo algo o si las celdas vienen vacías
-      console.log(
-        `LOG_DEBUG: Fila ${rowNumber} - Celda 1 (Nombre): "${row.getCell(1).value}"`,
-      )
+
       try {
-        const name = row.getCell(1).value?.toString()
-        // Si el nombre viene vacío, loguealo también
-        if (name === '') {
-          console.log(`LOG_DEBUG: Fila ${rowNumber} ignorada: Nombre vacío`)
-          return // O throw new Error(ItemErrorCode.NAME_EMPTY) si quieres que cuente como error
+        // Obtenemos el nombre una sola vez aquí adentro
+        const rawName = row.getCell(1).value
+        const name = rawName ? rawName.toString().trim() : ''
+
+        if (!name) {
+          console.log(`LOG_DEBUG: Fila ${rowNumber} ignorada por nombre vacío`)
+          continue // Salta a la siguiente iteración del for
         }
         if (!name || name.trim() === '')
           throw new Error(ItemErrorCode.NAME_EMPTY)
@@ -135,7 +138,7 @@ export class ExcelParserService {
           error: e.message,
         })
       }
-    })
+    }
 
     return { items, errors }
   }
