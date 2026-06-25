@@ -11,6 +11,7 @@ async function bootstrap() {
   app.use((req, res, next) => {
     console.log('LOG_DEBUG: Petición recibida en URL:', req.url)
     console.log('LOG_DEBUG: Headers:', JSON.stringify(req.headers))
+    console.log('LOG_DEBUG: Content-Type detectado:', req.get('content-type'))
     next()
   })
   const configService = app.get(ConfigService)
