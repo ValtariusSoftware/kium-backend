@@ -111,8 +111,8 @@ export class ExcelParserService {
           name: name,
           // productType: this.findProductTypeKey(typeLabel),
           productType: ProductType.RESALE, // <--- Hardcodealo acá, sin leer el Excel
-          costPrice: costPrice,
-          salePrice: salePrice,
+          costPrice: costPrice * 100,
+          salePrice: salePrice * 100,
           // baseUnit: this.findBaseUnitKey(unitLabel),
           // conversionToBaseQty: conversion,
           baseUnit: BaseUnit.UNIT, // <--- Hardcodealo acá, sin leer el Excel
