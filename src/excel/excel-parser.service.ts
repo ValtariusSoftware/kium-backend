@@ -44,14 +44,29 @@ export class ExcelParserService {
     console.log(
       `LOG_DEBUG: Total de filas detectadas por ExcelJS: ${sheet.rowCount}`,
     )
+
+    // Usamos rowCount para saber hasta dónde llegar
+    const totalRows = sheet.rowCount
+    console.log(
+      `LOG_DEBUG: Total de filas detectadas por ExcelJS: ${totalRows}`,
+    )
+
     const items: CreateItemInput[] = []
     const errors: BulkItemError[] = []
 
     // Reemplazamos sheet.eachRow por un bucle for que garantice la lectura
     console.log(`LOG_DEBUG: Intentando leer manualmente hasta la fila 10...`)
 
-    for (let rowNumber = 2; rowNumber <= 10; rowNumber++) {
+    // Iteramos desde la fila 2 hasta el total de filas que tenga datos
+    for (let rowNumber = 2; rowNumber <= totalRows; rowNumber++) {
       const row = sheet.getRow(rowNumber)
+
+      // Verificación rápida: si toda la fila está vacía, la saltamos
+      // Esto evita procesar miles de filas vacías al final del Excel
+      const rowValues = row.values as any[]
+      if (!rowValues || rowValues.every((v) => v === undefined || v === null)) {
+        continue
+      }
 
       // LOG de diagnóstico
       console.log(
