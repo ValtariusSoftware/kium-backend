@@ -47,12 +47,5 @@ void bootstrap()
 
 /**
  * 
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiI2VTV4WG5reW92UU03eXNqZ2g4eHZ2WmhhTkczIiwiaWF0IjoxNzgyNDk3MjY5LCJleHAiOjE3ODMxMDIwNjl9.nnwN_yMXW92MBJ_F7XYiFaaN__e1nPjcz82QKA0LKC8
 
-errores traducirlos 
-falta el dropdown de tipo de producto.
-
-borrado de archivos de la carpeta temp
-
-programar que ademas que se creen items se puedan actualizar en ese mismo servicio mediante el excel? o convendria 
  */

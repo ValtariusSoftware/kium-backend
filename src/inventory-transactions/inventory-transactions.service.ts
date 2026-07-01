@@ -22,6 +22,7 @@ import { RecipesService } from 'src/recipes/recipes.service'
 import { PaginationInput } from 'src/common/dto/pagination.input'
 import { ItemErrorCode } from 'src/items/enums/item-error-code.enum'
 import { UserStatsMetadata } from './dto/user-stats-metadata.output'
+import { MOCK_DATA } from './inventory-transaction.mock'
 
 @Injectable()
 export class InventoryTransactionsService {
@@ -198,229 +199,132 @@ export class InventoryTransactionsService {
    * que han sido clonados (versionados), permitiendo que las ventas de un ítem "hijo"
    * computen junto a las de su "padre" original mediante el parent_id.
    */
-  // 2. Método auxiliar para generar datos de prueba
-  private generateMockData(
-    startDate: Date,
-    endDate: Date,
-  ): FinancialReportResponse {
-    const fullHistory = [
-      {
-        label: '2025-02',
-        revenue: 100000,
-        cost: 20000,
-        losses: 10000,
-        netProfit: 70000,
-      },
-      {
-        label: '2025-03',
-        revenue: 135000,
-        cost: 17328,
-        losses: 37352.2,
-        netProfit: 80319.8,
-      },
-      {
-        label: '2025-04',
-        revenue: 100000,
-        cost: 20000,
-        losses: 10000,
-        netProfit: 70000,
-      },
-      {
-        label: '2025-05',
-        revenue: 120000,
-        cost: 25000,
-        losses: 5000,
-        netProfit: 90000,
-      },
-      {
-        label: '2025-06',
-        revenue: 100000,
-        cost: 20000,
-        losses: 10000,
-        netProfit: 70000,
-      },
-      {
-        label: '2025-07',
-        revenue: 135000,
-        cost: 17328,
-        losses: 37352.2,
-        netProfit: 80319.8,
-      },
-      {
-        label: '2025-08',
-        revenue: 100000,
-        cost: 20000,
-        losses: 10000,
-        netProfit: 70000,
-      },
-      {
-        label: '2025-09',
-        revenue: 120000,
-        cost: 25000,
-        losses: 5000,
-        netProfit: 90000,
-      },
-      {
-        label: '2025-10',
-        revenue: 100000,
-        cost: 20000,
-        losses: 10000,
-        netProfit: 70000,
-      },
-      {
-        label: '2025-11',
-        revenue: 120000,
-        cost: 25000,
-        losses: 5000,
-        netProfit: 90000,
-      },
-      {
-        label: '2025-12',
-        revenue: 0,
-        cost: 0,
-        losses: 0,
-        netProfit: 0,
-      },
-      {
-        label: '2026-01',
-        revenue: 0,
-        cost: 0,
-        losses: 0,
-        netProfit: 0,
-      },
-      {
-        label: '2026-02',
-        revenue: 0,
-        cost: 0,
-        losses: 0,
-        netProfit: 0,
-      },
-      {
-        label: '2026-03',
-        revenue: 135000,
-        cost: 17328,
-        losses: 37352.2,
-        netProfit: 80319.8,
-      },
-    ]
 
-    const data = fullHistory.filter(
-      (h) =>
-        h.label >= startDate.toISOString().slice(0, 7) &&
-        h.label <= endDate.toISOString().slice(0, 7),
-    )
-
-    const totalNet = data.reduce((sum, p) => sum + p.netProfit, 0)
-    const divisor = Math.min(data.length, 6)
-    const avgProfit = divisor > 0 ? totalNet / divisor : 0
-
-    return {
-      data,
-      avgProfit: Math.round(avgProfit * 100) / 100,
-      range: {
-        start: startDate.toISOString().slice(0, 7),
-        end: endDate.toISOString().slice(0, 7),
-      },
-    }
-  }
+  private readonly USE_MOCK = false // Activa esto para pruebas
 
   async getFinancialReport(
     userId: string,
-    startDate: Date,
-    endDate: Date,
+    page: number,
     groupBy: ReportGroupBy,
   ): Promise<FinancialReportResponse> {
-    const dateTrunc = groupBy === ReportGroupBy.DAY ? 'day' : 'month'
-    const format = groupBy === ReportGroupBy.DAY ? 'YYYY-MM-DD' : 'YYYY-MM'
-    // console.log('DEBUG: Rango recibido -> Start:', startDate, 'End:', endDate)
-    // 🚨 FORZAR MOCK DATA
-    // const useMock = true // Cambia a false cuando quieras volver a la DB real
-    // if (useMock) {
-    //   return this.generateMockData(startDate, endDate)
-    // }
-    // ... lógica de mock y truncado igual ...
+    // 1. Obtener datos desde la base de datos (Ordenados por fecha ASC)
+    const results = this.USE_MOCK
+      ? MOCK_DATA.sort((a, b) => a.label.localeCompare(b.label)) // Forzamos orden ASC
+      : await this.transactionRepository
+          .createQueryBuilder('t')
+          .select(
+            `TO_CHAR(DATE_TRUNC('${groupBy}', t.createdAt), 'YYYY-MM')`,
+            'label',
+          )
+          .addSelect(
+            "SUM(CASE WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.salePriceSnapshot ELSE 0 END)",
+            'revenue',
+          )
+          // .addSelect(
+          //   "SUM(CASE WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unit_cost_snapshot WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.unit_cost_snapshot WHEN t.type IN ('CONSUMPTION', 'PRODUCTION_OUT') THEN ABS(t.quantity) * t.unit_cost_snapshot ELSE 0 END)",
+          //   'cost',
+          // )
+          .addSelect(
+            `SUM(CASE 
+              WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unit_cost_snapshot 
+              WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.unit_cost_snapshot 
+              ELSE 0 END)`,
+            'cost',
+          )
+          .addSelect(
+            "SUM(CASE WHEN t.type = 'ADJUSTMENT_OUT' THEN ABS(t.quantity) * t.unit_cost_snapshot ELSE 0 END)",
+            'losses',
+          )
+          .where('t.userId = :userId', { userId })
+          .leftJoin('t.sale', 'sale')
+          .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
+          .groupBy('label')
+          .orderBy('label', 'ASC')
+          .getRawMany()
 
-    const results = await this.transactionRepository
-      .createQueryBuilder('t')
-      .innerJoin('t.item', 'item')
-      .select(
-        `TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`,
-        'label',
-      )
-      // Los SUM aquí operan sobre centavos (BigInt)
-      .addSelect(
-        `SUM(CASE 
-          WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.salePriceSnapshot 
-          WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.salePriceSnapshot 
-          ELSE 0 END)`,
-        'revenue',
-      )
-      .addSelect(
-        `SUM(CASE 
-          WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unit_cost_snapshot 
-          WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.unit_cost_snapshot 
-          WHEN t.type IN ('CONSUMPTION', 'PRODUCTION_OUT') THEN ABS(t.quantity) * t.unit_cost_snapshot 
-          ELSE 0 END)`,
-        'cost',
-      )
-      .addSelect(
-        `SUM(CASE 
-          WHEN t.type = 'ADJUSTMENT_OUT' THEN ABS(t.quantity) * t.unit_cost_snapshot
-          ELSE 0 END)`,
-        'losses',
-      )
-      .where('t.userId = :userId', { userId })
-      .leftJoin('t.sale', 'sale')
-      .andWhere('(sale.isVoided = false OR sale.id IS NULL)')
-      .andWhere('t.createdAt >= :startDate', { startDate })
-      .andWhere('t.createdAt < :nextDay', {
-        nextDay: new Date(new Date(endDate).getTime() + 86400000),
-      })
-      .groupBy(`TO_CHAR(DATE_TRUNC('${dateTrunc}', t.createdAt), '${format}')`)
-      .orderBy('label', 'ASC')
-      .getRawMany()
+    if (results.length === 0) {
+      return {
+        data: [],
+        avgProfit: 0,
+        canGoBack: false,
+        canGoForward: false,
+        range: { start: '', end: '' },
+      }
+    }
 
-    const data: FinancialDataPoint[] = results.map((r) => {
-      // 1. Limpiamos el string de Postgres: nos quedamos con la parte entera antes del punto
-      // Postgres devuelve algo como "32780000.0000"
-      const cleanRevenue = (r.revenue || '0').split('.')[0]
-      const cleanCost = (r.cost || '0').split('.')[0]
-      const cleanLosses = (r.losses || '0').split('.')[0]
+    // 2. Definir ventana y paginación (Lógica corregida para orden cronológico)
+    const windowSize = 6
+    const totalResults = results.length
+    // page 0 = últimos 6 meses, page 1 = 6 meses anteriores...
+    const startIndex = Math.max(0, totalResults - (page + 1) * windowSize)
+    const endIndex = totalResults - page * windowSize
 
-      // 2. Ahora sí, convertimos a BigInt con seguridad
-      const rev = BigInt(cleanRevenue)
-      const cst = BigInt(cleanCost)
-      const los = BigInt(cleanLosses)
+    const pageData = results.slice(startIndex, endIndex)
 
-      // 3. Operación con BigInt
-      const netProfitBig = rev - cst - los
+    // 3. Mapeo de datos (Ajustado para aceptar números o strings)
+    const realDataPoints: FinancialDataPoint[] = pageData.map((r) => {
+      // Convertimos a string primero para que .split('.') siempre funcione
+      const revStr = String(r.revenue || '0').split('.')[0]
+      const cstStr = String(r.cost || '0').split('.')[0]
+      const losStr = String(r.losses || '0').split('.')[0]
+
+      const rev = BigInt(revStr)
+      const cst = BigInt(cstStr)
+      const los = BigInt(losStr)
 
       return {
-        label: r.label,
+        label: r.label.trim(),
         revenue: Number(rev),
         cost: Number(cst),
         losses: Number(los),
-        netProfit: Number(netProfitBig),
+        netProfit: Number(rev - cst - los),
       }
     })
 
-    // Totales
-    const totalNetBig = data.reduce(
+    // 4. Construcción del array cronológico [Viejo -> Nuevo]
+    const data: FinancialDataPoint[] = []
+
+    if (realDataPoints.length > 0 && realDataPoints.length < windowSize) {
+      const missingCount = windowSize - realDataPoints.length
+      const referenceDate = new Date(realDataPoints[0].label + '-01')
+
+      for (let i = missingCount; i > 0; i--) {
+        const prevDate = new Date(referenceDate)
+        prevDate.setMonth(prevDate.getMonth() - i)
+        data.push({
+          label: prevDate.toISOString().slice(0, 7),
+          revenue: 0,
+          cost: 0,
+          losses: 0,
+          netProfit: 0,
+        })
+      }
+    }
+
+    // B. Agregar los datos reales
+    data.push(...realDataPoints)
+
+    // 5. Cálculo de promedio (basado solo en meses con actividad real en el set actual)
+    const totalNetBig = realDataPoints.reduce(
       (sum, p) => sum + BigInt(p.netProfit),
       BigInt(0),
     )
-
-    const divisor = data.length > 0 ? Math.min(data.length, 6) : 1
-
-    // El promedio sí suele llevar decimales, pero como devolvemos centavos enteros:
-    const avgProfit = Number(totalNetBig) / divisor
+    const avgProfit =
+      realDataPoints.length > 0
+        ? Number(totalNetBig) / realDataPoints.length
+        : 0
 
     return {
       data,
-      avgProfit: Math.round(avgProfit), // Mantenemos el promedio en centavos enteros
+      avgProfit: Math.round(avgProfit),
+      // Navegación lógica: si estamos en page 0, canGoBack es true si hay más datos antiguos
+      canGoBack: startIndex > 0,
+      canGoForward: endIndex < totalResults,
       range: {
-        start: startDate.toISOString().slice(0, 7),
-        end: endDate.toISOString().slice(0, 7),
+        // Usamos pageData (la ventana actual) para definir el rango visible
+        start: pageData.length > 0 ? pageData[0].label.trim() : '',
+        end:
+          pageData.length > 0 ? pageData[pageData.length - 1].label.trim() : '',
       },
     }
   }
@@ -428,15 +332,8 @@ export class InventoryTransactionsService {
    * Verifica la primer transaccion a la db.
    *
    */
-  async getUserStatsMetadata(userId: string): Promise<UserStatsMetadata> {
-    // const useMock = true
 
-    // if (useMock) {
-    //   return {
-    //     firstMonth: '2025-02', // Inicio de tu fullHistory mockeado
-    //     lastMonth: '2026-03', // Fin de tu fullHistory mockeado
-    //   }
-    // }
+  async getUserStatsMetadata(userId: string): Promise<UserStatsMetadata> {
     const result = await this.transactionRepository
       .createQueryBuilder('t')
       .select("TO_CHAR(MIN(t.createdAt), 'YYYY-MM')", 'firstMonth')

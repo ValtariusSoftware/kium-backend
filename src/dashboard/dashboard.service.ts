@@ -102,12 +102,19 @@ export class DashboardService {
     ELSE 0 END)`,
         'revenue',
       )
+      //   .addSelect(
+      //     `SUM(CASE
+      // WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unit_cost_snapshot
+      // WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.unit_cost_snapshot
+      // WHEN t.type IN ('CONSUMPTION', 'PRODUCTION_OUT') THEN ABS(t.quantity) * t.unit_cost_snapshot
+      // ELSE 0 END)`,
+      //     'cost',
+      //   )
       .addSelect(
         `SUM(CASE 
-    WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unit_cost_snapshot 
-    WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.unit_cost_snapshot 
-    WHEN t.type IN ('CONSUMPTION', 'PRODUCTION_OUT') THEN ABS(t.quantity) * t.unit_cost_snapshot 
-    ELSE 0 END)`,
+        WHEN t.type = 'SALE' THEN ABS(t.quantity) * t.unit_cost_snapshot 
+        WHEN t.type = 'RETURN_FROM_SALE' AND t.documentRef NOT LIKE 'VOID-%' THEN -ABS(t.quantity) * t.unit_cost_snapshot 
+        ELSE 0 END)`, // Solo costos de venta (COGS)
         'cost',
       )
       .addSelect(
