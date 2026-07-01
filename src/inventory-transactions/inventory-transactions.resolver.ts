@@ -7,6 +7,7 @@ import {
   ResolveField,
   Parent,
   Context,
+  Int,
 } from '@nestjs/graphql'
 import { InventoryTransactionsService } from './inventory-transactions.service'
 import { InventoryTransaction } from './entities/inventory-transaction.entity'
@@ -65,15 +66,14 @@ export class InventoryTransactionsResolver {
 
   @Query(() => FinancialReportResponse, { name: 'financialReport' })
   async getFinancialReport(
-    @Args('startDate') startDate: Date,
-    @Args('endDate') endDate: Date,
+    @Args('page', { type: () => Int, defaultValue: 0 }) page: number, // Solo recibe la página
     @Args('groupBy', { type: () => ReportGroupBy }) groupBy: ReportGroupBy,
     @CurrentUser() user: User,
   ): Promise<FinancialReportResponse> {
+    // Ya no pasamos fechas, pasamos la página
     return this.inventoryTransactionsService.getFinancialReport(
       user.id,
-      startDate,
-      endDate,
+      page,
       groupBy,
     )
   }

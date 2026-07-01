@@ -36,4 +36,8 @@ export class FinancialReportResponse {
 
   @Field(() => Float) avgProfit: number
   @Field(() => RangeDTO) range: RangeDTO
+
+  // 1. Agregamos los campos que faltaban
+  @Field(() => Boolean) canGoBack: boolean
+  @Field(() => Boolean) canGoForward: boolean
 }

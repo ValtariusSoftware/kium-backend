@@ -230,6 +230,8 @@ type FinancialReportResponse {
   data: [FinancialDataPoint!]!
   avgProfit: Float!
   range: RangeDTO!
+  canGoBack: Boolean!
+  canGoForward: Boolean!
 }
 
 type TransactionHistoryItem {
@@ -337,7 +339,7 @@ type Query {
   lowStockReport(pagination: PaginationInput): PaginatedItems!
   getItemByBarcode(barcode: String!): Item
   itemTransactionHistory(itemId: ID!, pagination: PaginationInput): PaginatedTransactions!
-  financialReport(startDate: DateTime!, endDate: DateTime!, groupBy: ReportGroupBy!): FinancialReportResponse!
+  financialReport(page: Int! = 0, groupBy: ReportGroupBy!): FinancialReportResponse!
   userStatsMetadata: UserStatsMetadata!
   subscriptionManifest: [SubscriptionFeature!]!
   subscriptionLastUpdate: DateTime!
