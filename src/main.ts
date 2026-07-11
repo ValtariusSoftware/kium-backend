@@ -14,11 +14,22 @@ async function bootstrap() {
     console.log('LOG_DEBUG: Content-Type detectado:', req.get('content-type'))
     next()
   })
+  // const configService = app.get(ConfigService)
+  // // Habilitar CORS
+  // app.enableCors({
+  //   origin: configService.get<string>('corsOrigin'),
+  //   credentials: true,
+  // })
   const configService = app.get(ConfigService)
-  // Habilitar CORS
+
+  // 3. Lee la variable. Si no existe, usa un array vacío o un default seguro
+  const origins = configService.get<string>('corsOrigin')?.split(',') || []
+
   app.enableCors({
-    origin: configService.get<string>('corsOrigin'),
+    origin: origins,
     credentials: true,
+    methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
+    allowedHeaders: 'Content-Type, Authorization',
   })
 
   app.useGlobalPipes(
