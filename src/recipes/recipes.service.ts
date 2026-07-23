@@ -66,6 +66,40 @@ export class RecipesService {
     }
   }
 
+  private async calculateTotalRecipeCost(
+    userId: string,
+    ingredients: any[], // O tu tipo definido de ingrediente
+    queryRunner: any,
+  ): Promise<number> {
+    let totalCost = 0
+
+    for (const ing of ingredients) {
+      const item = await queryRunner.manager.findOne(Item, {
+        where: { id: ing.ingredientItemId, userId },
+      })
+
+      if (!item)
+        throw new NotFoundException(
+          `Ingrediente ${ing.ingredientItemId} no encontrado.`,
+        )
+
+      // Lógica única y centralizada
+      const unitScaleFactor = getUnitConversionFactor(
+        ing.unitOfMeasure,
+        item.baseUnit,
+      )
+      const packingFactor = Number(item.conversionToBaseQty) || 1
+
+      // Cantidad real convertida a unidad base del ítem
+      const qtyInBaseUnit =
+        Number(ing.quantityRequired) / (unitScaleFactor * packingFactor)
+
+      totalCost += (Number(item.costPrice) || 0) * qtyInBaseUnit
+    }
+
+    return totalCost
+  }
+
   /**
    * Crea una nueva receta e infiere los roles de producción para los ítems involucrados.
    * Aplica normalización de unidades para el cálculo de costos y validación circular.
@@ -132,9 +166,9 @@ export class RecipesService {
       const savedRecipe = await queryRunner.manager.save(newRecipe)
 
       // 6. 🧮 CÁLCULO DE COSTO NORMALIZADO
-      let totalRecipeCost = 0
+      // let totalRecipeCost = 0
 
-      for (const ing of ingredients) {
+      /*for (const ing of ingredients) {
         const ingredientItem = await queryRunner.manager.findOne(Item, {
           where: { id: ing.ingredientItemId, userId },
         })
@@ -144,25 +178,6 @@ export class RecipesService {
             `Ingrediente ${ing.ingredientItemId} no encontrado.`,
           )
         }
-
-        /**
-         * REFACTORIZACIÓN SENIOR: Normalización de cantidad.
-         * Si el costo (costPrice) está expresado en la unidad base (ej: 1kg),
-         * y la receta pide 500g, debemos dividir por el factor de conversión
-         * para obtener la proporción real del costo.
-         */
-        // const factor = ingredientItem.conversionToBaseQty || 1
-        // const quantityInBaseUnit = ing.quantityRequired / factor
-
-        // totalRecipeCost += (ingredientItem.costPrice || 0) * quantityInBaseUnit
-
-        // // ✅ LOG 2: Ahora sí está adentro del bucle y reconoce las variables
-        // console.log(`> Ingrediente: ${ingredientItem.name}`)
-        // console.log(`  - Costo Base (DB): ${ingredientItem.costPrice}`)
-        // console.log(
-        //   `  - Cant. Solicitada: ${ing.quantityRequired} | Factor Conv: ${factor}`,
-        // )
-        //  console.log(`  - Costo Proporcional: ${partialCost}`)
 
         // 🧮 LÓGICA DE CONVERSIÓN CENTRALIZADA
         // 1. Obtenemos el factor de escala entre unidades (ej: GRAM a KILOGRAM = 1000)
@@ -174,11 +189,6 @@ export class RecipesService {
         // 2. El factor de empaque del ítem (ej: el ítem se compra por Pack de 6)
         const packingFactor = ingredientItem.conversionToBaseQty || 1
 
-        /**
-         * La cantidad real en unidad base es:
-         * cantidad_pedida / (escala_unidades * factor_empaque)
-         * Ej: 250g de azúcar (comprada en bolsas de 1kg): 250 / (1000 * 1) = 0.25 unidades base.
-         */
         const quantityInBaseUnit =
           ing.quantityRequired / (unitScaleFactor * packingFactor)
 
@@ -190,8 +200,13 @@ export class RecipesService {
           `  - Cant. Real Base: ${quantityInBaseUnit} ${ingredientItem.baseUnit}`,
         )
         console.log(`  - Costo Proporcional: ${partialCost}`)
-      }
+      }*/
 
+      const totalRecipeCost = await this.calculateTotalRecipeCost(
+        userId,
+        ingredients,
+        queryRunner,
+      )
       // Redondeamos el costo unitario final (en centavos enteros)
       const calculatedUnitCost = Math.round(totalRecipeCost / yieldQuantity)
 
@@ -303,10 +318,10 @@ export class RecipesService {
       )
 
       // 5. Recalcular Costo Teórico
-      let totalRecipeCost = 0
+      //let totalRecipeCost = 0
       const currentIngredients = ingredients || recipe.ingredients
 
-      for (const ing of currentIngredients) {
+      /*for (const ing of currentIngredients) {
         const item = await queryRunner.manager.findOne(Item, {
           where: { id: ing.ingredientItemId, userId },
         })
@@ -317,7 +332,13 @@ export class RecipesService {
           const qtyInBaseUnit = Number(ing.quantityRequired) / factor
           totalRecipeCost += (Number(item.costPrice) || 0) * qtyInBaseUnit
         }
-      }
+      }*/
+
+      const totalRecipeCost = await this.calculateTotalRecipeCost(
+        userId,
+        currentIngredients,
+        queryRunner,
+      )
 
       // 6. Redondeo final para el campo int8
       // Calculamos el costo por unidad. Si totalRecipeCost es decimal,
