@@ -29,6 +29,7 @@ import { ScheduleModule } from '@nestjs/schedule'
 import { ExcelModule } from './excel/excel.module'
 import { ServeStaticModule } from '@nestjs/serve-static'
 import * as path from 'path'
+import { SyncModule } from './sync/sync.module'
 @Module({
   imports: [
     // 1. Agregamos el módulo para servir archivos
@@ -57,6 +58,7 @@ import * as path from 'path'
     FirebaseModule,
     UsersModule,
     AuthModule,
+    SyncModule,
     ExcelModule,
     ItemsModule,
     RecipesModule,

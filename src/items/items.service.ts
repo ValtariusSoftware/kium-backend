@@ -37,6 +37,9 @@ import { SubscriptionFeatureSlug } from 'src/subscriptions/enums/subscription-fe
 import { nanoid } from 'nanoid'
 import { ItemsDomainService } from './items-domain.service'
 import { ProductType } from './enums/product-type'
+import { SyncGateway } from 'src/sync/sync.gateway'
+import { EntityType } from 'src/common/constants/entities.constant'
+import { SyncService } from 'src/sync/sync.service'
 
 @Injectable()
 export class ItemsService {
@@ -59,6 +62,8 @@ export class ItemsService {
     @Inject(forwardRef(() => SubscriptionsService)) // Usar forwardRef si hay circularidad
     private readonly subscriptionsService: SubscriptionsService,
     private readonly itemsDomainService: ItemsDomainService,
+    private readonly syncGateway: SyncGateway,
+    private readonly syncService: SyncService,
   ) {}
 
   /**
@@ -73,6 +78,7 @@ export class ItemsService {
     userId: string,
     accessLevel: AccessLevel,
     createItemInput: CreateItemInput,
+    originClientId?: string,
   ): Promise<Item> {
     const queryRunner = this.dataSource.createQueryRunner()
     await queryRunner.connect()
@@ -139,7 +145,23 @@ export class ItemsService {
         )
       }
 
+      // ⚡ 5. REGISTRAR EL EVENTO DE SINCRONIZACIÓN (Siempre, tenga stock o no)
+      await this.syncService.registerEvent(
+        userId,
+        EntityType.ITEM,
+        savedItem.id,
+        'UPSERT',
+        originClientId,
+        queryRunner,
+      )
+
       await queryRunner.commitTransaction()
+
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.ITEM,
+        userId,
+        originClientId,
+      )
 
       const itemWithFinalStock = await queryRunner.manager.findOne(Item, {
         where: { id: savedItem.id },

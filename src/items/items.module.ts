@@ -9,6 +9,7 @@ import { SubscriptionsModule } from 'src/subscriptions/subscriptions.module'
 import { ExcelParserService } from 'src/excel/excel-parser.service'
 import { ExcelModule } from 'src/excel/excel.module'
 import { ItemsDomainService } from './items-domain.service'
+import { SyncModule } from 'src/sync/sync.module'
 
 @Module({
   imports: [
@@ -17,6 +18,7 @@ import { ItemsDomainService } from './items-domain.service'
     forwardRef(() => InventoryTransactionsModule),
     forwardRef(() => SubscriptionsModule),
     ExcelModule,
+    SyncModule,
   ],
   providers: [
     ItemsService,
