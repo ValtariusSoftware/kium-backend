@@ -302,6 +302,21 @@ type PaginatedTopProducts {
   total: Int!
 }
 
+type SyncEventDto {
+  id: String!
+  sequenceNumber: String!
+  entityType: String!
+  entityId: String!
+  action: String!
+  originClientId: String
+}
+
+type SyncPayloadDto {
+  events: [SyncEventDto!]!
+  latestSequence: Int!
+  requiresFullSync: Boolean!
+}
+
 type IngredientConsumption {
   name: String!
   totalUsedForThisItem: Float!
@@ -352,6 +367,7 @@ type Query {
   getLeastSellingDetailed(pagination: PaginationInput): PaginatedTopProducts!
   getLowStockDetailed(pagination: PaginationInput): PaginatedLowStock!
   getMonthlySalesDetailed(pagination: PaginationInput, filter: SalesFilterInput): PaginatedSales!
+  getChangesSince(lastSequence: Int!): SyncPayloadDto!
 
   """Simula el consumo de ingredientes sin afectar el stock real."""
   simulateProductionBatch(inputs: [ProduceItemInput!]!): BatchSimulationResponse!

@@ -32,6 +32,7 @@ import { GraphQLUpload, FileUpload } from 'graphql-upload-ts'
 import { getProductTemplateConfig } from 'src/excel/excel.template.config'
 import { ExcelService } from 'src/excel/excel.service'
 import { EXCEL_HEADERS } from 'src/common/i18n/excel-headers'
+import { Headers } from '@nestjs/common'
 
 @Resolver(() => Item)
 export class ItemsResolver {
@@ -47,9 +48,17 @@ export class ItemsResolver {
   async createItem(
     @Args('createItemInput') createItemInput: CreateItemInput,
     @CurrentUser() user: User, // Decora para obtener el objeto User (con ID y accessLevel)
+    @Context() context: any,
   ): Promise<Item> {
+    const originClientId = context.req?.headers['x-client-id'] || null
     // El Service se encarga de aplicar el límite FREE/PRO
-    return this.itemsService.create(user.id, user.accessLevel, createItemInput)
+    console.log('ORIGEN DE DISPOSITIVO', originClientId)
+    return this.itemsService.create(
+      user.id,
+      user.accessLevel,
+      createItemInput,
+      originClientId,
+    )
   }
 
   @Query(() => PaginatedItems, { name: 'items' }) // <--- Ahora devuelve la "caja"
