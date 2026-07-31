@@ -1,16 +1,73 @@
-import { Injectable } from '@nestjs/common'
+import { Injectable, Logger } from '@nestjs/common'
 import { SyncEventEntity } from './entities/sync-event.entity'
 import { DataSource, MoreThan, QueryRunner, Repository } from 'typeorm'
 import { InjectRepository } from '@nestjs/typeorm'
+import { Cron } from '@nestjs/schedule'
 
 // src/sync/sync.service.ts
 @Injectable()
 export class SyncService {
+  private readonly logger = new Logger(SyncService.name)
   constructor(
     @InjectRepository(SyncEventEntity)
     private readonly syncEventRepo: Repository<SyncEventEntity>,
     private readonly dataSource: DataSource,
   ) {}
+
+  // 🧹 CRON DE LIMPIEZA: Corre cada 30 días en producción (o puedes usar CronExpression.EVERY_10_SECONDS para pruebas)
+  @Cron('0 0 3 */15 * *') // Se ejecuta a las 03:00 AM cada 15 días exactos del mes
+  async handleOldSyncEventsCleanup() {
+    this.logger.log(
+      '🧹 [Cron] Iniciando limpieza de eventos de sincronización antiguos (15 días)...',
+    )
+
+    const fifteenDaysAgo = new Date()
+    fifteenDaysAgo.setDate(fifteenDaysAgo.getDate() - 15)
+
+    try {
+      const result = await this.syncEventRepo
+        .createQueryBuilder()
+        .delete()
+        .from(SyncEventEntity)
+        .where('createdAt < :date', { date: fifteenDaysAgo })
+        .execute()
+
+      this.logger.log(
+        `🧹 [Cron] Limpieza finalizada. Eventos eliminados: ${result.affected || 0}`,
+      )
+    } catch (error) {
+      this.logger.error(
+        '❌ [Cron] Error al limpiar eventos antiguos de sincronización:',
+        error,
+      )
+    }
+  }
+
+  // @Cron('0 0 */2 * * *') // Se ejecuta al minuto 0 de cada 2 horas
+  // async handleOldSyncEventsCleanup() {
+  //   this.logger.log(
+  //     '🧹 [Cron PRUEBAS] Iniciando limpieza de eventos de sincronización (Modo Test: 2 horas)...',
+  //   )
+
+  //   // Borramos lo que tenga más de 2 horas de creado
+  //   const twoHoursAgo = new Date()
+  //   twoHoursAgo.setHours(twoHoursAgo.getHours() - 2)
+
+  //   try {
+  //     const result = await this.syncEventRepo
+  //       .createQueryBuilder()
+  //       .delete()
+  //       .from(SyncEventEntity)
+  //       .where('createdAt < :date', { date: twoHoursAgo })
+  //       .execute()
+
+  //     this.logger.log(
+  //       `🧹 [Cron PRUEBAS] Limpieza finalizada. Eventos eliminados: ${result.affected || 0}`,
+  //     )
+  //   } catch (error) {
+  //     this.logger.error('❌ [Cron PRUEBAS] Error al limpiar eventos:', error)
+  //   }
+  // }
 
   async registerEvent(
     userId: string,

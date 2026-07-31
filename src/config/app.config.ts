@@ -9,7 +9,8 @@ export default () => ({
     schema: process.env.DB_SCHEMA || 'public',
   },
   corsOrigin:
-    process.env.CORS_ORIGIN || 'http://localhost:5173,http://localhost:3000',
+    process.env.CORS_ORIGIN ||
+    'http://localhost:5173,http://localhost:3000,http://192.168.100.66:5173',
   graphqlSchema: process.env.GRAPHQL_SCHEMA,
   nextAuthSecret: process.env.NEXTAUTH_SECRET,
   firebase: {
