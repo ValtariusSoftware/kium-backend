@@ -1,6 +1,6 @@
 import { Field, InputType, registerEnumType } from '@nestjs/graphql'
 // 1. Importa los validadores
-import { IsOptional, IsEnum } from 'class-validator'
+import { IsOptional, IsEnum, IsBoolean } from 'class-validator'
 
 export enum StockStatusFilter {
   LOW_STOCK = 'LOW_STOCK',
@@ -24,6 +24,18 @@ export class ItemsFilterInput {
   @Field({ nullable: true })
   @IsOptional()
   isIngredient?: boolean
+
+  // 🚩 NUEVO: Agregamos el filtro de borrador para que la API lo reciba
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  isDraft?: boolean
+
+  // 🚩 NUEVO: Permitir filtrar por estado de bloqueo en la query
+  @Field({ nullable: true })
+  @IsOptional()
+  @IsBoolean()
+  isLockedByPlan?: boolean
 
   @Field(() => StockStatusFilter, { nullable: true })
   @IsOptional()

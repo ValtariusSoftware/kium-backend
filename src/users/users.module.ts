@@ -1,16 +1,20 @@
 // src/users/users.module.ts
 
-import { Module } from '@nestjs/common'
+import { forwardRef, Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { User } from './entities/user.entity'
+import { Item } from 'src/items/entities/item.entity'
 import { UsersService } from './users.service'
 import { UsersResolver } from './users.resolver'
 import { FirebaseModule } from 'src/firebase/firebase.module'
+import { SubscriptionsModule } from 'src/subscriptions/subscriptions.module'
+
 @Module({
   // Importamos la Entidad para que TypeORM sepa cómo manejar la tabla
   imports: [
-    TypeOrmModule.forFeature([User]),
+    TypeOrmModule.forFeature([User, Item]),
     FirebaseModule, // 👈 AGREGA ESTO AQUÍ
+    forwardRef(() => SubscriptionsModule),
   ],
   providers: [UsersService, UsersResolver],
   exports: [UsersService, TypeOrmModule],

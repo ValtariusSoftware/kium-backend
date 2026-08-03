@@ -240,6 +240,13 @@ export class ItemsService {
       )
     }
 
+    // Filtrado por estado de borrador si se envía en los filtros
+    if (filters?.isDraft !== undefined) {
+      query.andWhere('item.isDraft = :isDraft', {
+        isDraft: filters.isDraft,
+      })
+    }
+
     // REGLA: Si pagination viene explícito (o es undefined), decide qué hacer
     if (pagination) {
       const limit = pagination.limit ?? PaginationInput.DEFAULT_LIMIT
@@ -351,6 +358,17 @@ export class ItemsService {
         item,
       )
       Object.assign(item, newRoles)
+    }
+
+    // 2. Solo pasa a false si le acaban de pasar un precio válido o si ya tiene uno configurado
+    const effectiveSalePrice =
+      updateData.salePrice !== undefined ? updateData.salePrice : item.salePrice
+    if (
+      effectiveSalePrice !== null &&
+      effectiveSalePrice !== undefined &&
+      effectiveSalePrice > 0
+    ) {
+      item.isDraft = false
     }
 
     // 2. Fusionar el resto (nombre, barcode, sku, etc.)
@@ -810,6 +828,18 @@ export class ItemsService {
             item,
           )
           Object.assign(item, newRoles)
+        }
+
+        // 3. 🚩 SALIR DE BORRADOR: Si el ítem era borrador y ahora tiene un precio válido asignado, pasa a false
+        const effectiveSalePrice =
+          input.salePrice !== undefined ? input.salePrice : item.salePrice
+        if (
+          item.isDraft &&
+          effectiveSalePrice !== null &&
+          effectiveSalePrice !== undefined &&
+          effectiveSalePrice > 0
+        ) {
+          item.isDraft = false
         }
 
         // 🚩 IMPORTANTE: El costo NO se toca en el catálogo. Lo eliminamos del input por seguridad.

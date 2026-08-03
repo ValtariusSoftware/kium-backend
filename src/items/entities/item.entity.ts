@@ -9,6 +9,7 @@ import {
   PrimaryGeneratedColumn,
   OneToOne,
   Unique,
+  Index,
 } from 'typeorm'
 import { ObjectType, Field, ID, registerEnumType, Float } from '@nestjs/graphql'
 import { User } from '../../users/entities/user.entity'
@@ -208,18 +209,23 @@ export class Item {
   @Field({ nullable: true })
   deletedAt?: Date
 
+  // 🚩 2. Agregamos @Index a las columnas de filtrado frecuente
+  @Index('IDX_ITEM_IS_SALEABLE')
   @Column({ name: 'is_saleable', type: 'boolean', default: false })
   @Field(() => Boolean)
   isSaleable: boolean
 
+  @Index('IDX_ITEM_IS_PRODUCED')
   @Column({ name: 'is_produced', type: 'boolean', default: false })
   @Field(() => Boolean)
   isProduced: boolean
 
+  @Index('IDX_ITEM_IS_PURCHASABLE')
   @Column({ name: 'is_purchasable', type: 'boolean', default: true })
   @Field(() => Boolean)
   isPurchasable: boolean
 
+  @Index('IDX_ITEM_IS_INGREDIENT')
   @Column({ name: 'is_ingredient', type: 'boolean', default: false })
   @Field(() => Boolean)
   isIngredient: boolean
@@ -240,4 +246,16 @@ export class Item {
   @Column({ name: 'is_initialized', type: 'boolean', default: false })
   @Field(() => Boolean)
   isInitialized: boolean
+
+  // 🚩 3. NUEVA COLUMNA: isDraft (con su propio índice para consultas rápidas)
+  @Index('IDX_ITEM_IS_DRAFT')
+  @Column({ name: 'is_draft', type: 'boolean', default: false })
+  @Field(() => Boolean)
+  isDraft: boolean
+
+  // 🚩 NUEVA COLUMNA: isLockedByPlan
+  @Index('IDX_ITEM_IS_LOCKED_BY_PLAN')
+  @Column({ name: 'is_locked_by_plan', type: 'boolean', default: false })
+  @Field(() => Boolean)
+  isLockedByPlan: boolean
 }
