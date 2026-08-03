@@ -7,12 +7,15 @@ import {
   NotFoundException,
   UnauthorizedException,
   Inject,
+  forwardRef,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
 import { AccessLevel, SubscriptionStatus, User } from './entities/user.entity'
 import { UserErrorCode } from './enums/user-error-code.enum'
 import * as admin from 'firebase-admin'
+import { Item } from 'src/items/entities/item.entity'
+import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
 
 // 🚨 Definimos una interfaz para el payload del token decodificado de Firebase
 // Usamos solo los campos necesarios
@@ -30,6 +33,10 @@ export class UsersService {
     // Inyectamos el repositorio de la entidad User
     @InjectRepository(User)
     private usersRepository: Repository<User>,
+    @InjectRepository(Item)
+    private itemsRepository: Repository<Item>,
+    @Inject(forwardRef(() => SubscriptionsService))
+    private readonly subscriptionsService: SubscriptionsService,
     @Inject('FIREBASE_ADMIN') private readonly firebaseApp: admin.app.App,
   ) {}
 
@@ -110,9 +117,40 @@ export class UsersService {
       if (!user.subscriptionStartDate) {
         user.subscriptionStartDate = new Date()
       }
+
+      // 🔓 Si pasa a PRO, destrabamos todos sus ítems de golpe
+      await this.itemsRepository.update({ userId }, { isLockedByPlan: false })
     } else {
       user.subscriptionStatus = SubscriptionStatus.NON_SUBSCRIBED
-      user.subscriptionStartDate = undefined // 👈 Ahora esto no dará error
+      user.subscriptionStartDate = undefined
+
+      // 🔍 1. Buscamos dinámicamente el límite permitido para FREE (ej: 100) desde la tabla subscription_features
+      const freeLimit = await this.subscriptionsService.getLimit(
+        'stock_limit',
+        AccessLevel.FREE,
+      )
+      // const freeLimit = 4
+      // 📦 2. Traemos todos los ítems activos del usuario ordenados por fecha de creación (los más viejos primero)
+      const items = await this.itemsRepository.find({
+        where: { userId },
+        order: { createdAt: 'ASC' },
+      })
+
+      // 🔒 3. Si supera el límite gratuito, bloqueamos los excedentes (los más nuevos)
+      if (items.length > freeLimit) {
+        const itemsToLock = items.slice(freeLimit)
+        const lockIds = itemsToLock.map((item) => item.id)
+
+        await this.itemsRepository
+          .createQueryBuilder()
+          .update()
+          .set({ isLockedByPlan: true })
+          .where('id IN (:...ids)', { ids: lockIds })
+          .execute()
+      } else {
+        // Si está por debajo del límite, aseguramos que ninguno quede bloqueado por error
+        await this.itemsRepository.update({ userId }, { isLockedByPlan: false })
+      }
     }
 
     return this.usersRepository.save(user)

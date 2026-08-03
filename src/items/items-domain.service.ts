@@ -26,6 +26,33 @@ export class ItemsDomainService {
   ) {}
 
   /**
+   * Determina si un ítem es considerado un borrador operativo según su tipo y precios.
+   */
+  calculateIsDraft(input: CreateItemInput): boolean {
+    const {
+      productType = ProductType.RESALE,
+      costPrice = 0,
+      salePrice = 0,
+    } = input
+    const cost = costPrice ?? 0
+    const sale = salePrice ?? 0
+
+    switch (productType) {
+      case ProductType.HYBRID:
+      case ProductType.RESALE:
+        return cost <= 0 || sale <= 0 // Necesita ambos precios
+      case ProductType.PRODUCED_FINAL:
+        return sale <= 0 // Solo necesita precio de venta
+      case ProductType.PURCHASED_INGREDIENT:
+        return cost <= 0 // Solo necesita precio de costo
+      case ProductType.PRODUCED_INGREDIENT:
+        return false // Los insumos producidos no requieren precios iniciales obligatorios
+      default:
+        return true
+    }
+  }
+
+  /**
    * Infiere roles basados en precios y estado actual.
    * @param costPrice Precio de costo actual o nuevo
    * @param salePrice Precio de venta actual o nuevo
@@ -49,6 +76,7 @@ export class ItemsDomainService {
         isPurchasable: currentItem.isPurchasable, // SE MANTIENE
         isIngredient: currentItem.isIngredient, // SE MANTIENE
         isProduced: currentItem.isProduced, // SE MANTIENE
+        isDraft: currentItem.isDraft,
       }
     }
 
@@ -73,6 +101,7 @@ export class ItemsDomainService {
         ProductType.PRODUCED_INGREDIENT,
         ProductType.HYBRID,
       ].includes(productType),
+      isDraft: this.calculateIsDraft(input), // 💡 Asignamos el estado de borrador calculado
     }
   }
   /**

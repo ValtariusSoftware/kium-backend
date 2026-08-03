@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common'
+import { forwardRef, Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { SubscriptionFeature } from './entities/subscription-feature.entity'
 import { SubscriptionFeatureTranslation } from './entities/subscription-feature-translation.entity'
@@ -17,7 +17,7 @@ import { UserCampaignTracker } from 'src/notifications/entities/user-campaign-tr
       NotificationCampaign,
       UserCampaignTracker,
     ]),
-    UsersModule,
+    forwardRef(() => UsersModule),
     NotificationsModule,
   ],
   providers: [SubscriptionsResolver, SubscriptionsService],

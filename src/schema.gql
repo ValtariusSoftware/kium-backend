@@ -72,6 +72,8 @@ type Item {
   parentId: ID
   isVerified: Boolean!
   isInitialized: Boolean!
+  isDraft: Boolean!
+  isLockedByPlan: Boolean!
   canProduceQuantity: Float!
   totalAvailableStock: Float!
   hasOperationalHistory: Boolean!
@@ -105,34 +107,44 @@ enum AccessLevel {
   PRO
 }
 
-type AuthPayload {
-  """El usuario autenticado/creado"""
-  user: User!
-
-  """Token JWT de corta duración (para cabecera Authorization)"""
-  accessToken: String!
-
-  """Token de larga duración (para renovar el Access Token)"""
-  refreshToken: String!
-}
-
-type RefreshPayload {
-  """Nuevo Token de acceso JWT de corta duración."""
-  accessToken: String!
-
-  """Nuevo Token de refresco JWT de larga duración."""
-  refreshToken: String!
-}
-
-type Sale {
+type SubscriptionFeatureTranslation {
   id: ID!
-  totalAmount: Float!
-  createdAt: DateTime!
-  items: [InventoryTransaction!]
-  isVoided: Boolean!
-  paymentMethod: String!
-  notes: String
+  languageCode: String!
+  name: String!
+}
+
+type SubscriptionFeature {
+  id: ID!
+  slug: String!
+  isFree: Boolean!
+  isPro: Boolean!
+  isActive: Boolean!
+  isHighlighted: Boolean!
+  limits: JSON
+  displayOrder: Float!
   updatedAt: DateTime!
+  translations: [SubscriptionFeatureTranslation!]!
+}
+
+"""
+The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
+"""
+scalar JSON @specifiedBy(url: "http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf")
+
+type NotificationCampaignTranslation {
+  id: ID!
+  languageCode: String!
+  title: String!
+  body: String!
+  campaignId: String!
+}
+
+type NotificationCampaign {
+  id: ID!
+  slug: String!
+  isActive: Boolean!
+  updatedAt: DateTime!
+  translations: [NotificationCampaignTranslation!]!
 }
 
 type InventoryTransaction {
@@ -162,29 +174,66 @@ enum TransactionType {
   RETURN_FROM_SALE
 }
 
-type SubscriptionFeatureTranslation {
+type Sale {
   id: ID!
-  languageCode: String!
-  name: String!
-}
-
-type SubscriptionFeature {
-  id: ID!
-  slug: String!
-  isFree: Boolean!
-  isPro: Boolean!
-  isActive: Boolean!
-  isHighlighted: Boolean!
-  limits: JSON
-  displayOrder: Float!
+  totalAmount: Float!
+  createdAt: DateTime!
+  items: [InventoryTransaction!]
+  isVoided: Boolean!
+  paymentMethod: String!
+  notes: String
   updatedAt: DateTime!
-  translations: [SubscriptionFeatureTranslation!]!
 }
 
-"""
-The `JSON` scalar type represents JSON values as specified by [ECMA-404](http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf).
-"""
-scalar JSON @specifiedBy(url: "http://www.ecma-international.org/publications/files/ECMA-ST/ECMA-404.pdf")
+type TopProduct {
+  name: String!
+  quantitySold: Float!
+}
+
+type DashboardSummary {
+  monthlyNetProfit: Float!
+  lowStockCount: Int!
+  lowStockPreview: [Item!]!
+  topSellingProducts: [TopProduct!]!
+  totalSalesMonth: Int!
+  salesTrend: Int!
+  monthlyLosses: Float!
+  leastSellingProducts: [TopProduct!]!
+}
+
+type PaginatedLowStock {
+  items: [Item!]!
+  total: Int!
+}
+
+type PaginatedSales {
+  sales: [Sale!]!
+  total: Int!
+}
+
+type PaginatedTopProducts {
+  items: [TopProduct!]!
+  total: Int!
+}
+
+type AuthPayload {
+  """El usuario autenticado/creado"""
+  user: User!
+
+  """Token JWT de corta duración (para cabecera Authorization)"""
+  accessToken: String!
+
+  """Token de larga duración (para renovar el Access Token)"""
+  refreshToken: String!
+}
+
+type RefreshPayload {
+  """Nuevo Token de acceso JWT de corta duración."""
+  accessToken: String!
+
+  """Nuevo Token de refresco JWT de larga duración."""
+  refreshToken: String!
+}
 
 type BulkItemError {
   row: Int!
@@ -253,53 +302,6 @@ type PaginatedTransactions {
 type UserStatsMetadata {
   firstMonth: String!
   lastMonth: String!
-}
-
-type NotificationCampaignTranslation {
-  id: ID!
-  languageCode: String!
-  title: String!
-  body: String!
-  campaignId: String!
-}
-
-type NotificationCampaign {
-  id: ID!
-  slug: String!
-  isActive: Boolean!
-  updatedAt: DateTime!
-  translations: [NotificationCampaignTranslation!]!
-}
-
-type TopProduct {
-  name: String!
-  quantitySold: Float!
-}
-
-type DashboardSummary {
-  monthlyNetProfit: Float!
-  lowStockCount: Int!
-  lowStockPreview: [Item!]!
-  topSellingProducts: [TopProduct!]!
-  totalSalesMonth: Int!
-  salesTrend: Int!
-  monthlyLosses: Float!
-  leastSellingProducts: [TopProduct!]!
-}
-
-type PaginatedLowStock {
-  items: [Item!]!
-  total: Int!
-}
-
-type PaginatedSales {
-  sales: [Sale!]!
-  total: Int!
-}
-
-type PaginatedTopProducts {
-  items: [TopProduct!]!
-  total: Int!
 }
 
 type SyncEventDto {
@@ -384,6 +386,8 @@ input ItemsFilterInput {
   isSaleable: Boolean
   isProduced: Boolean
   isIngredient: Boolean
+  isDraft: Boolean
+  isLockedByPlan: Boolean
   stockStatus: StockStatusFilter
   search: String
 }
