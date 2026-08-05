@@ -455,6 +455,7 @@ type Mutation {
   updateFcmToken(token: String!, language: String!): Boolean!
   logoutAndClearToken(token: String!): Boolean!
   deleteUserAccount: Boolean!
+  resetMyTestData: Boolean!
   createNotificationCampaigns(inputs: [CreateNotificationCampaignInput!]!): [NotificationCampaign!]!
   updateNotificationCampaigns(inputs: [UpdateNotificationCampaignInput!]!): [NotificationCampaign!]!
   removeNotificationCampaigns(ids: [String!]!): Boolean!

@@ -1,4 +1,4 @@
-import { Resolver, Query, Mutation, Args } from '@nestjs/graphql'
+import { Resolver, Query, Mutation, Args, Context } from '@nestjs/graphql'
 import { User } from './entities/user.entity'
 import { UsersService } from './users.service'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
@@ -63,5 +63,18 @@ export class UsersResolver {
   async deleteUserAccount(@CurrentUser() user: User): Promise<boolean> {
     // El control de si el token es válido o no lo maneja directamente el servicio
     return this.usersService.deleteAccount(user)
+  }
+
+  @Mutation(() => Boolean, { name: 'resetMyTestData' })
+  async resetMyTestData(
+    @CurrentUser() user: User,
+    @Context() context: any, // 👈 1. Inyectamos el contexto de GraphQL
+  ): Promise<boolean> {
+    // 2. Extraemos el header independientemente de si viene en minúscula o mayúscula
+    const req = context.req || context.connection?.context
+    const devKey =
+      req?.headers['x-dev-reset-key'] || req?.headers['X-Dev-Reset-Key']
+
+    return this.usersService.resetUserData(user, devKey)
   }
 }

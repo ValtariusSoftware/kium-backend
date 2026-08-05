@@ -8,6 +8,7 @@ import {
   UnauthorizedException,
   Inject,
   forwardRef,
+  ForbiddenException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
@@ -16,6 +17,7 @@ import { UserErrorCode } from './enums/user-error-code.enum'
 import * as admin from 'firebase-admin'
 import { Item } from 'src/items/entities/item.entity'
 import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
+import { SyncEventEntity } from 'src/sync/entities/sync-event.entity'
 
 // 🚨 Definimos una interfaz para el payload del token decodificado de Firebase
 // Usamos solo los campos necesarios
@@ -37,6 +39,8 @@ export class UsersService {
     private itemsRepository: Repository<Item>,
     @Inject(forwardRef(() => SubscriptionsService))
     private readonly subscriptionsService: SubscriptionsService,
+    @InjectRepository(SyncEventEntity)
+    private syncEventsRepository: Repository<SyncEventEntity>,
     @Inject('FIREBASE_ADMIN') private readonly firebaseApp: admin.app.App,
   ) {}
 
@@ -262,6 +266,61 @@ export class UsersService {
       )
       throw new InternalServerErrorException(
         UserErrorCode.DELETE_ACCOUNT_FAILED,
+      )
+    }
+  }
+
+  async resetUserData(user: User | null, devKey: string): Promise<boolean> {
+    // 1. Doble validación de seguridad estricta para entornos de producción
+    if (process.env.NODE_ENV === 'production') {
+      throw new ForbiddenException('Esta acción está prohibida en producción.')
+    }
+
+    const expectedKey =
+      process.env.DEV_RESET_SECRET_KEY || 'valtarius_dev_secret_2026'
+    console.log('Clave recibida:', devKey, 'Clave esperada:', expectedKey)
+    if (devKey !== expectedKey) {
+      throw new UnauthorizedException('Clave secreta de reseteo inválida.')
+    }
+
+    // 2. Validaciones previas de usuario
+    if (!user || !user.id) {
+      throw new UnauthorizedException(UserErrorCode.USER_NOT_AUTHENTICATED)
+    }
+
+    const userExists = await this.usersRepository.findOne({
+      where: { id: user.id },
+    })
+    if (!userExists) {
+      throw new NotFoundException(UserErrorCode.USER_NOT_FOUND)
+    }
+
+    try {
+      this.logger.warn(
+        `🧹 [DEV RESET] Limpiando datos de prueba para el usuario: ID=${user.id}`,
+      )
+
+      // 3. Borrado de datos asociados (Ajustá según tus repositorios inyectados)
+      // Si usas ON DELETE CASCADE en la FK del usuario hacia Item/Sales,
+      // borrar y recrear el usuario o vaciar sus relaciones es directo.
+      // Aquí limpiamos los ítems de este usuario específico:
+      await this.itemsRepository.delete({ user: { id: user.id } })
+      await this.syncEventsRepository.delete({ user: { id: user.id } })
+
+      // Si tenés más repositorios (Ventas, Recetas, etc.), limpialos acá en orden:
+      // await this.salesRepository.delete({ user: { id: user.id } })
+      // await this.recipesRepository.delete({ user: { id: user.id } })
+
+      this.logger.log(
+        `✅ [DEV RESET] Datos de prueba eliminados exitosamente para: ${user.id}`,
+      )
+      return true
+    } catch (error) {
+      this.logger.error(
+        `❌ Error al resetear datos de usuario ${user.id}: ${(error as Error).message}`,
+      )
+      throw new InternalServerErrorException(
+        UserErrorCode.DELETE_ACCOUNT_FAILED, // O un código de error específico para esto
       )
     }
   }
