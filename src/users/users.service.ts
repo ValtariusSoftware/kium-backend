@@ -272,7 +272,10 @@ export class UsersService {
 
   async resetUserData(user: User | null, devKey: string): Promise<boolean> {
     // 1. Doble validación de seguridad estricta para entornos de producción
-    if (process.env.NODE_ENV === 'production') {
+    if (
+      process.env.NODE_ENV === 'production' &&
+      !process.env.DEV_RESET_SECRET_KEY
+    ) {
       throw new ForbiddenException('Esta acción está prohibida en producción.')
     }
 
