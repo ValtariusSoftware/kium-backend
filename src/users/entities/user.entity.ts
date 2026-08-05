@@ -11,6 +11,7 @@ import {
 import { ObjectType, Field, ID, registerEnumType } from '@nestjs/graphql' // 💡 IMPORTAMOS registerEnumType
 import { Item } from 'src/items/entities/item.entity'
 import { Recipe } from 'src/recipes/entities/recipe.entity'
+import { SyncEventEntity } from 'src/sync/entities/sync-event.entity'
 
 // 1. Enum para el estado de la suscripción
 export enum SubscriptionStatus {
@@ -121,4 +122,7 @@ export class User {
 
   @OneToMany(() => Recipe, (recipe) => recipe.user)
   recipes: Recipe[]
+
+  @OneToMany(() => SyncEventEntity, (syncEvent) => syncEvent.user)
+  syncEvents: SyncEventEntity[]
 }
