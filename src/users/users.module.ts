@@ -9,11 +9,12 @@ import { UsersResolver } from './users.resolver'
 import { FirebaseModule } from 'src/firebase/firebase.module'
 import { SubscriptionsModule } from 'src/subscriptions/subscriptions.module'
 import { SyncEventEntity } from 'src/sync/entities/sync-event.entity'
+import { Sale } from 'src/sales/entities/sale.entity'
 
 @Module({
   // Importamos la Entidad para que TypeORM sepa cómo manejar la tabla
   imports: [
-    TypeOrmModule.forFeature([User, Item, SyncEventEntity]),
+    TypeOrmModule.forFeature([User, Item, SyncEventEntity, Sale]),
     FirebaseModule, // 👈 AGREGA ESTO AQUÍ
     forwardRef(() => SubscriptionsModule),
   ],
