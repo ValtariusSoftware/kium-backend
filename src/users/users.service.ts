@@ -18,6 +18,7 @@ import * as admin from 'firebase-admin'
 import { Item } from 'src/items/entities/item.entity'
 import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
 import { SyncEventEntity } from 'src/sync/entities/sync-event.entity'
+import { Sale } from 'src/sales/entities/sale.entity'
 
 // 🚨 Definimos una interfaz para el payload del token decodificado de Firebase
 // Usamos solo los campos necesarios
@@ -42,6 +43,8 @@ export class UsersService {
     @InjectRepository(SyncEventEntity)
     private syncEventsRepository: Repository<SyncEventEntity>,
     @Inject('FIREBASE_ADMIN') private readonly firebaseApp: admin.app.App,
+    @InjectRepository(Sale)
+    private readonly salesRepository: Repository<Sale>,
   ) {}
 
   // Método para buscar todos los usuarios
@@ -309,7 +312,7 @@ export class UsersService {
       // Aquí limpiamos los ítems de este usuario específico:
       await this.itemsRepository.delete({ user: { id: user.id } })
       await this.syncEventsRepository.delete({ user: { id: user.id } })
-
+      await this.salesRepository.delete({ user: { id: user.id } })
       // Si tenés más repositorios (Ventas, Recetas, etc.), limpialos acá en orden:
       // await this.salesRepository.delete({ user: { id: user.id } })
       // await this.recipesRepository.delete({ user: { id: user.id } })
