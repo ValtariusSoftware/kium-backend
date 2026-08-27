@@ -8,7 +8,7 @@ import {
   IsOptional,
 } from 'class-validator'
 import { Transform } from 'class-transformer'
-import { BaseUnit, Item } from '../entities/item.entity'
+import { BaseUnit, Item, ItemType } from '../entities/item.entity'
 import { ProductType } from '../enums/product-type'
 
 @InputType()
@@ -17,12 +17,6 @@ export class CreateItemInput {
   @IsNotEmpty()
   @IsString()
   name: string
-
-  // @Field(() => Float)
-  // @IsNumber()
-  // @Min(0)
-  // @Transform(({ value }) => Number(parseFloat(value).toFixed(4))) // 👈 Limpieza a 4 decimales
-  // stock: number
 
   @Field(() => Float, { nullable: true, defaultValue: 0 }) // En GraphQL es opcional
   @IsOptional() // class-validator permite que no venga
@@ -52,24 +46,6 @@ export class CreateItemInput {
     value ? Number(parseFloat(value).toFixed(2)) : value,
   ) // 👈 Precios a 2
   minStockAlert?: number
-
-  // @Field(() => Float, { nullable: true })
-  // @IsOptional()
-  // @IsNumber()
-  // @Min(0)
-  // @Transform(({ value }) =>
-  //   value ? Number(parseFloat(value).toFixed(2)) : value,
-  // )
-  // costPrice?: number
-
-  // @Field(() => Float, { nullable: true })
-  // @IsOptional()
-  // @IsNumber()
-  // @Min(0)
-  // @Transform(({ value }) =>
-  //   value ? Number(parseFloat(value).toFixed(2)) : value,
-  // )
-  // salePrice?: number
 
   @Field(() => Float, { nullable: true })
   @IsOptional()
@@ -103,6 +79,11 @@ export class CreateItemInput {
   @IsOptional()
   @IsEnum(ProductType)
   productType?: ProductType
+
+  @Field(() => ItemType, { nullable: true, defaultValue: ItemType.PRODUCT })
+  @IsOptional()
+  @IsEnum(ItemType)
+  itemType?: ItemType
 }
 
 @ObjectType()

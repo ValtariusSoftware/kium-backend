@@ -3,6 +3,7 @@ import { User } from './entities/user.entity'
 import { UsersService } from './users.service'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { UpdateAccessLevelInput } from './dto/update-access-level.input'
+import { CurrencyType } from './dto/currency.type'
 @Resolver(() => User)
 export class UsersResolver {
   constructor(private usersService: UsersService) {}
@@ -76,5 +77,35 @@ export class UsersResolver {
       req?.headers['x-dev-reset-key'] || req?.headers['X-Dev-Reset-Key']
 
     return this.usersService.resetUserData(user, devKey)
+  }
+
+  @Query(() => [CurrencyType], { name: 'availableCurrencies' })
+  async getAvailableCurrencies(
+    @CurrentUser() user: User,
+    @Args('lang', { type: () => String, nullable: true }) lang?: string,
+  ): Promise<CurrencyType[]> {
+    return this.usersService.getAvailableCurrencies(user, lang)
+  }
+
+  @Query(() => [CurrencyType], { name: 'searchCurrencies' })
+  async searchCurrencies(
+    @CurrentUser() user: User,
+    @Args('search', { type: () => String }) search: string,
+    @Args('lang', { type: () => String, nullable: true }) lang?: string,
+  ): Promise<CurrencyType[]> {
+    return this.usersService.searchCurrencies(user, search, lang)
+  }
+
+  @Mutation(() => User, { name: 'completeOnboarding' })
+  async completeOnboarding(
+    @CurrentUser() user: User,
+    @Args('currency', { type: () => String }) currency: string,
+    @Args('numberFormat', { type: () => String }) numberFormat: string,
+  ): Promise<User> {
+    return this.usersService.completeOnboardingAndPreferences(
+      user,
+      currency,
+      numberFormat,
+    )
   }
 }

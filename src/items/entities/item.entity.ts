@@ -16,35 +16,6 @@ import { User } from '../../users/entities/user.entity'
 import { Recipe } from 'src/recipes/entities/recipe.entity'
 import { ColumnNumericTransformer } from 'src/common/transformers/numeric.transformer'
 
-// --- ENUMS ---
-
-// export enum BaseUnit {
-//   UNIT = 'UNIT',
-//   PACK = 'PACK',
-//   BOX = 'BOX',
-//   ROLL = 'ROLL',
-//   BAG = 'BAG',
-//   PALLET = 'PALLET',
-//   METER = 'METER',
-//   CENTIMETER = 'CENTIMETER',
-//   MILLIMETER = 'MILLIMETER',
-//   FOOT = 'FOOT',
-//   YARD = 'YARD',
-//   SQUARE_METER = 'SQUARE_METER',
-//   KILOGRAM = 'KILOGRAM',
-//   GRAM = 'GRAM',
-//   MILLIGRAM = 'MILLIGRAM',
-//   POUND = 'POUND',
-//   OUNCE = 'OUNCE',
-//   LITER = 'LITER',
-//   MILLILITER = 'MILLILITER',
-//   GALLON = 'GALLON',
-//   FL_OUNCE = 'FL_OUNCE',
-//   CUBIC_METER = 'CUBIC_METER',
-//   HOUR = 'HOUR',
-//   DAY = 'DAY',
-// }
-
 export enum BaseUnit {
   // --- DISCRETAS (Universales) ---
   UNIT = 'UNIT',
@@ -78,6 +49,16 @@ export enum BaseUnit {
 
 registerEnumType(BaseUnit, { name: 'BaseUnit' })
 
+export enum ItemType {
+  PRODUCT = 'PRODUCT',
+  SERVICE = 'SERVICE',
+}
+
+registerEnumType(ItemType, {
+  name: 'ItemType',
+  description: 'The type of the item (Product or Service)',
+})
+
 const numericTransformer = new ColumnNumericTransformer()
 
 // --- ENTIDAD ---
@@ -103,6 +84,17 @@ export class Item {
   @Column('varchar', { length: 255 })
   @Field()
   name: string
+
+  // 💎 NUEVO CAMPO: itemType (PRODUCT o SERVICE)
+  @Index('IDX_ITEM_TYPE')
+  @Column({
+    type: 'enum',
+    enum: ItemType,
+    name: 'item_type',
+    default: ItemType.PRODUCT,
+  })
+  @Field(() => ItemType)
+  itemType: ItemType
 
   @Column('decimal', {
     default: 0,
