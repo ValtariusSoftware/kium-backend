@@ -11,7 +11,7 @@ import { CreateItemInput } from './dto/create-item.dto'
 import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
 import { AccessLevel } from 'src/users/entities/user.entity'
 import { SubscriptionFeatureSlug } from 'src/subscriptions/enums/subscription-feature-slug.enum'
-import { Item } from './entities/item.entity'
+import { Item, ItemType } from './entities/item.entity'
 
 interface DatabaseError extends Error {
   code?: string
@@ -64,9 +64,21 @@ export class ItemsDomainService {
       // costPrice,
       salePrice,
       productType = ProductType.RESALE,
+      itemType,
     } = input
     // const hasCost = !!costPrice && costPrice > 0
     const hasSale = !!salePrice && salePrice > 0
+
+    // Si es un servicio, los roles son fijos y simples
+    if (itemType === ItemType.SERVICE) {
+      return {
+        isSaleable: true,
+        isPurchasable: false,
+        isProduced: false,
+        isIngredient: false,
+        isDraft: !hasSale, // Es borrador si no tiene precio de venta
+      }
+    }
 
     // BLOQUEO DE SEGURIDAD: Si el ítem ya existe, NO recalculamos roles basados en tipo.
     // Solo actualizamos si es vendible o no basado en el precio de venta.
@@ -122,7 +134,15 @@ export class ItemsDomainService {
     }
   }
   validateItemIntegrity(input: CreateItemInput) {
-    const { productType, costPrice, salePrice, stock } = input
+    const { productType, costPrice, salePrice, stock, itemType } = input
+
+    // 1. Validación para Servicios: Los servicios NO llevan stock, pero SÍ pueden tener costo (opcional)
+    if (itemType === ItemType.SERVICE) {
+      if ((stock ?? 0) > 0) {
+        throw new BadRequestException(ItemErrorCode.INVALID_STOCK_FOR_SERVICE)
+      }
+      return // Salimos acá porque es un servicio y no usa las reglas de productType
+    }
 
     const hasCost = (costPrice ?? 0) > 0
     const hasSale = (salePrice ?? 0) > 0

@@ -36,7 +36,7 @@ import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
 import { SubscriptionFeatureSlug } from 'src/subscriptions/enums/subscription-feature-slug.enum'
 import { nanoid } from 'nanoid'
 import { ItemsDomainService } from './items-domain.service'
-import { ProductType } from './enums/product-type'
+// import { ProductType } from './enums/product-type'
 import { SyncGateway } from 'src/sync/sync.gateway'
 import { EntityType } from 'src/common/constants/entities.constant'
 import { SyncService } from 'src/sync/sync.service'
@@ -247,6 +247,19 @@ export class ItemsService {
       })
     }
 
+    // 🚩 NUEVO: Agregamos el filtro de bloqueados por plan
+    if (filters?.isLockedByPlan !== undefined) {
+      query.andWhere('item.isLockedByPlan = :isLockedByPlan', {
+        isLockedByPlan: filters.isLockedByPlan,
+      })
+    }
+
+    if (filters?.itemType !== undefined) {
+      query.andWhere('item.itemType = :itemType', {
+        itemType: filters.itemType,
+      })
+    }
+
     // REGLA: Si pagination viene explícito (o es undefined), decide qué hacer
     if (pagination) {
       const limit = pagination.limit ?? PaginationInput.DEFAULT_LIMIT
@@ -265,20 +278,40 @@ export class ItemsService {
     }
   }
 
-  /**
-   * Esta lista se lleva a la app de android y sincroniza en base a la fecha de actualizacion.
-   *
-   */
-  /*
-  async getSyncItems(userId: string, updatedSince: Date): Promise<Item[]> {
-    return this.itemsRepository.find({
-      where: {
-        userId,
-        updatedAt: MoreThan(updatedSince), // TypeORM acepta Date aquí perfectamente
-      },
-      order: { updatedAt: 'ASC' },
-    })
-  }*/
+  async getMetrics(userId: string) {
+    const query = this.itemsRepository
+      .createQueryBuilder('item')
+      .select('COUNT(item.id)', 'total')
+      .addSelect(
+        // Activos: Sanos (sin alerta, sin borrador, sin bloqueo)
+        'SUM(CASE WHEN item.isDraft = false AND item.isLockedByPlan = false AND (item.minStockAlert IS NULL OR item.stock > item.minStockAlert) THEN 1 ELSE 0 END)',
+        'active',
+      )
+      .addSelect(
+        // En alerta: No son borradores, no están bloqueados, pero su stock está bajo
+        'SUM(CASE WHEN item.isDraft = false AND item.isLockedByPlan = false AND item.minStockAlert IS NOT NULL AND item.stock <= item.minStockAlert THEN 1 ELSE 0 END)',
+        'alert',
+      )
+      .addSelect(
+        'SUM(CASE WHEN item.isDraft = true THEN 1 ELSE 0 END)',
+        'draft',
+      )
+      .addSelect(
+        'SUM(CASE WHEN item.isLockedByPlan = true THEN 1 ELSE 0 END)',
+        'locked',
+      )
+      .where('item.userId = :userId', { userId })
+
+    const result = await query.getRawOne()
+
+    return {
+      total: Number(result?.total || 0),
+      active: Number(result?.active || 0),
+      alert: Number(result?.alert || 0),
+      draft: Number(result?.draft || 0),
+      locked: Number(result?.locked || 0),
+    }
+  }
 
   /**
    * Obtiene un ítem por ID, asegurando que pertenezca al usuario especificado.
@@ -394,18 +427,6 @@ export class ItemsService {
     accessLevel: AccessLevel,
     inputs: CreateItemInput[],
   ): Promise<BulkItemResponse> {
-    // // 1. VALIDAR LÍMITE DE BATCH (Cuántos puede subir por archivo)
-    // const batchLimit = await this.subscriptionsService.getLimit(
-    //   SubscriptionFeatureSlug.BULK_UPLOAD,
-    //   accessLevel,
-    // )
-
-    // if (inputs.length > batchLimit) {
-    //   throw new ForbiddenException(
-    //     `Límite de carga masiva excedido (${batchLimit} ítems por vez).`,
-    //   )
-    // }
-
     // 1. Validar límite de batch usando función privada
     try {
       await this.itemsDomainService.validateBulkCapacity(
@@ -435,14 +456,14 @@ export class ItemsService {
       const input = inputs[i]
 
       // --- NUEVA VALIDACIÓN: Solo Reventa ---
-      if (input.productType !== ProductType.RESALE) {
+      /*if (input.productType !== ProductType.RESALE) {
         errorReport.push({
           row: i + 1,
           name: input.name,
           error: ItemErrorCode.UNSUPPORTED_PRODUCT_TYPE, // Asegúrate de agregar este código
         })
         continue // Saltamos este producto
-      }
+      }*/
       // --------------------------------------
 
       // 1. Sanitización de seguridad (Valores por defecto)
@@ -512,26 +533,6 @@ export class ItemsService {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         await queryRunner.rollbackTransaction()
-
-        // let errorCode: string = ItemErrorCode.INTERNAL_ERROR // a borrar reemplazado por lo de abajo
-
-        // Si el error viene de tu validador, err.response.message (o el mensaje que arrojes)
-        // ya será el código del Enum. Asegúrate de capturarlo:
-        // let errorCode: string = err.message || ItemErrorCode.INTERNAL_ERROR
-
-        // if (err.code === '23505') {
-        //   const detail = err.detail?.toLowerCase() || ''
-        //   if (detail.includes('sku')) {
-        //     errorCode = ItemErrorCode.DUPLICATE_SKU
-        //   } else if (detail.includes('barcode')) {
-        //     errorCode = ItemErrorCode.DUPLICATE_BARCODE
-        //   } else {
-        //     errorCode = ItemErrorCode.DUPLICATE_ENTRY
-        //   }
-        // } else {
-        //   // Si es otro tipo de error, podrías usar el mensaje o un código genérico
-        //   errorCode = err.message || ItemErrorCode.INTERNAL_ERROR
-        // }
 
         errorReport.push({
           row: i + 1,
@@ -611,12 +612,27 @@ export class ItemsService {
         })
 
         if (item) {
+          const inputForRoles = {
+            itemType: item.itemType, // 👈 Propiedad real de la entidad Item
+            costPrice: item.costPrice ?? 0,
+            salePrice:
+              input.salePrice !== undefined
+                ? input.salePrice
+                : (item.salePrice ?? 0),
+            stock: item.stock ?? 0,
+          }
+
+          const updatedRoles = this.itemsDomainService.calculateItemRoles(
+            inputForRoles as CreateItemInput,
+            item,
+          )
           // ACTUALIZACIÓN DE CATÁLOGO (Lógica exclusiva de update)
           await queryRunner.manager.update(Item, item.id, {
             barcode: input.barcode,
             minStockAlert: input.minStockAlert,
             salePrice: input.salePrice,
             sku: input.sku,
+            ...updatedRoles,
           })
           results.push(
             await queryRunner.manager.findOneOrFail(Item, {

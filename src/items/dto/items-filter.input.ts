@@ -1,6 +1,7 @@
 import { Field, InputType, registerEnumType } from '@nestjs/graphql'
 // 1. Importa los validadores
 import { IsOptional, IsEnum, IsBoolean } from 'class-validator'
+import { ItemType } from '../entities/item.entity'
 
 export enum StockStatusFilter {
   LOW_STOCK = 'LOW_STOCK',
@@ -45,4 +46,10 @@ export class ItemsFilterInput {
   @Field({ nullable: true })
   @IsOptional()
   search?: string
+
+  // 💎 NUEVO: Permitir filtrar explícitamente por tipo de ítem
+  @Field(() => ItemType, { nullable: true })
+  @IsOptional()
+  @IsEnum(ItemType)
+  itemType?: ItemType
 }

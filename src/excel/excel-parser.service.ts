@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common'
 import * as ExcelJS from 'exceljs'
 import { UNIT_DICTIONARY } from 'src/common/i18n/base-unit.translations'
-import { BaseUnit } from 'src/items/entities/item.entity'
+import { BaseUnit, ItemType } from 'src/items/entities/item.entity'
 import { BulkItemError, CreateItemInput } from 'src/items/dto/create-item.dto'
 import { ProductType } from 'src/items/enums/product-type'
 import { TYPE_DICTIONARY } from 'src/common/i18n/product-type.translations'
@@ -126,6 +126,7 @@ export class ExcelParserService {
           name: name,
           // productType: this.findProductTypeKey(typeLabel),
           productType: ProductType.RESALE, // <--- Hardcodealo acá, sin leer el Excel
+          itemType: ItemType.PRODUCT,
           costPrice: costPrice * 100,
           salePrice: salePrice * 100,
           // baseUnit: this.findBaseUnitKey(unitLabel),

@@ -105,13 +105,35 @@ export class AuthService {
     // Realizar el FindOrCreate (Upsert)
     const user = await this.usersService.upsertUser(tokenPayload)
 
+    // 2. 💡 Forzamos a que TypeScript entienda que user.currency acá es el string plano de la DB
+    const currencyCode =
+      typeof user.currency === 'string' ? user.currency : user.currency.code
+
+    const currencyResults = await this.usersService.searchCurrencies(
+      user,
+      currencyCode,
+      user.language,
+    )
+    // Y en el fallback asegurate de usar currencyCode también:
+    const currencyObject =
+      currencyResults.length > 0
+        ? currencyResults[0]
+        : { code: currencyCode, name: currencyCode, symbol: currencyCode }
+
+    // 3. Creamos una copia del usuario mutando la moneda a objeto para que GraphQL la devuelva bien
+    const userForPayload = {
+      ...user,
+      currency: currencyObject,
+    }
+
     // Generar tokens
     const { accessToken, refreshToken } = this.generateTokens(user.id)
 
     // Devolver la carga útil completa
     console.log(refreshToken)
     return {
-      user,
+      // user,
+      user: userForPayload as any,
       accessToken,
       refreshToken,
     }

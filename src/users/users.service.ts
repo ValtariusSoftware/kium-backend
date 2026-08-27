@@ -9,6 +9,7 @@ import {
   Inject,
   forwardRef,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository } from 'typeorm'
@@ -19,9 +20,13 @@ import { Item } from 'src/items/entities/item.entity'
 import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
 import { SyncEventEntity } from 'src/sync/entities/sync-event.entity'
 import { Sale } from 'src/sales/entities/sale.entity'
-
 // 🚨 Definimos una interfaz para el payload del token decodificado de Firebase
 // Usamos solo los campos necesarios
+interface FormattedCurrency {
+  code: string
+  name: string
+  symbol: string
+}
 export interface FirebaseDecodedToken {
   user_id: string
   email: string
@@ -328,6 +333,210 @@ export class UsersService {
       throw new InternalServerErrorException(
         UserErrorCode.DELETE_ACCOUNT_FAILED, // O un código de error específico para esto
       )
+    }
+  }
+
+  async getAvailableCurrencies(
+    user: User | null,
+    lang?: string | null,
+  ): Promise<FormattedCurrency[]> {
+    if (!user) {
+      throw new UnauthorizedException('No autorizado')
+    }
+
+    const rawLang =
+      lang || (typeof user.language === 'string' ? user.language : 'en')
+    const targetLang = rawLang.includes('_')
+      ? rawLang.replace('_', '-')
+      : rawLang
+
+    // Obtenemos todos los códigos ISO de monedas oficiales directamente de Node.js
+    const allCodes = Intl.supportedValuesOf('currency')
+    const formattedCurrencies: FormattedCurrency[] = []
+
+    const currencyDisplayNames = new Intl.DisplayNames([targetLang, 'en'], {
+      type: 'currency',
+    })
+
+    for (const code of allCodes) {
+      // 1. Obtener nombre traducido
+      let name = code
+      try {
+        const translated = currencyDisplayNames.of(code)
+        if (translated) {
+          name = translated.charAt(0).toUpperCase() + translated.slice(1)
+        }
+      } catch (error) {
+        this.logger.error(
+          `Error al obtener el nombre de la moneda ${code}:`,
+          error,
+        )
+        continue // Si Intl no reconoce el código, lo saltamos
+      }
+
+      // 2. Obtener símbolo
+      let symbol = code
+      try {
+        const parts = new Intl.NumberFormat(targetLang, {
+          style: 'currency',
+          currency: code,
+        }).formatToParts(0)
+        const symbolPart = parts.find((p) => p.type === 'currency')
+        if (symbolPart) {
+          symbol = symbolPart.value
+        }
+      } catch (error) {
+        this.logger.error(
+          `Error al obtener el símbolo de la moneda ${code}:`,
+          error,
+        )
+        symbol = code
+      }
+
+      formattedCurrencies.push({
+        code,
+        name,
+        symbol,
+      })
+    }
+
+    return formattedCurrencies.sort((a, b) =>
+      a.name.localeCompare(b.name, targetLang, { sensitivity: 'base' }),
+    )
+  }
+
+  async searchCurrencies(
+    user: User | null,
+    search: string,
+    lang?: string | null,
+  ): Promise<FormattedCurrency[]> {
+    if (!user) {
+      throw new UnauthorizedException('No autorizado')
+    }
+
+    const rawLang =
+      lang || (typeof user.language === 'string' ? user.language : 'en')
+    const targetLang = rawLang.includes('_')
+      ? rawLang.replace('_', '-')
+      : rawLang
+
+    // Usamos el listado nativo de Node.js en vez de currency-codes
+    const allCodes = Intl.supportedValuesOf('currency')
+
+    // Función auxiliar para limpiar tildes, acentos y pasar a minúsculas
+    const normalizeText = (text: string) => {
+      return text
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .trim()
+    }
+
+    const searchNormalized = normalizeText(search)
+    const filteredCurrencies: FormattedCurrency[] = []
+
+    const currencyDisplayNames = new Intl.DisplayNames([targetLang, 'en'], {
+      type: 'currency',
+    })
+
+    for (const code of allCodes) {
+      // Obtener nombre traducido
+      let name = code
+      try {
+        const translated = currencyDisplayNames.of(code)
+        if (translated) {
+          name = translated.charAt(0).toUpperCase() + translated.slice(1)
+        } else {
+          continue
+        }
+      } catch {
+        continue // Si Intl no lo reconoce, lo saltamos
+      }
+
+      // Normalizamos tanto el código como el nombre para comparar sin tildes ni mayúsculas
+      const matchesCode = normalizeText(code).includes(searchNormalized)
+      const matchesName = normalizeText(name).includes(searchNormalized)
+
+      if (!matchesCode && !matchesName) {
+        continue
+      }
+
+      // Obtener símbolo
+      let symbol = code
+      try {
+        const parts = new Intl.NumberFormat(targetLang, {
+          style: 'currency',
+          currency: code,
+        }).formatToParts(0)
+        const symbolPart = parts.find((p) => p.type === 'currency')
+        if (symbolPart) {
+          symbol = symbolPart.value
+        }
+      } catch {
+        symbol = code
+      }
+
+      filteredCurrencies.push({
+        code,
+        name,
+        symbol,
+      })
+    }
+
+    return filteredCurrencies.sort((a, b) =>
+      a.name.localeCompare(b.name, targetLang, { sensitivity: 'base' }),
+    )
+  }
+
+  async completeOnboardingAndPreferences(
+    user: User | null,
+    currency: string,
+    numberFormat: string,
+  ): Promise<User> {
+    if (!user) {
+      throw new UnauthorizedException('No autorizado')
+    }
+
+    // 1. Validar moneda
+    const supportedCurrencies = Intl.supportedValuesOf('currency')
+    const upperCurrency = currency.toUpperCase()
+
+    if (!supportedCurrencies.includes(upperCurrency)) {
+      throw new BadRequestException(`La moneda '${currency}' no es válida.`)
+    }
+
+    // 2. Validar formato numérico
+    const validNumberFormats = ['dot-decimal', 'comma-decimal']
+    if (!validNumberFormats.includes(numberFormat)) {
+      throw new BadRequestException(
+        `El formato numérico '${numberFormat}' no es válido.`,
+      )
+    }
+
+    // 3. Asignar nuevos valores y completar onboarding (en la DB guardamos el string)
+    user.currency = upperCurrency
+    user.numberFormat = numberFormat
+    user.onboardingCompleted = true
+
+    // 4. Guardar en base de datos
+    const savedUser = await this.usersRepository.save(user)
+
+    // 💡 5. CONVERSIÓN PARA GRAPHQL: Igual que en el login, armamos el objeto currency
+    const currencyResults = await this.searchCurrencies(
+      savedUser,
+      upperCurrency,
+      savedUser.language,
+    )
+
+    const currencyObject =
+      currencyResults.length > 0
+        ? currencyResults[0]
+        : { code: upperCurrency, name: upperCurrency, symbol: upperCurrency }
+
+    // Retornamos el usuario con la moneda transformada en objeto para que GraphQL no falle
+    return {
+      ...savedUser,
+      currency: currencyObject as any,
     }
   }
 }

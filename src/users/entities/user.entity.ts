@@ -12,6 +12,7 @@ import { ObjectType, Field, ID, registerEnumType } from '@nestjs/graphql' // �
 import { Item } from 'src/items/entities/item.entity'
 import { Recipe } from 'src/recipes/entities/recipe.entity'
 import { SyncEventEntity } from 'src/sync/entities/sync-event.entity'
+import { CurrencyModel } from '../models/currency.model'
 
 // 1. Enum para el estado de la suscripción
 export enum SubscriptionStatus {
@@ -104,6 +105,26 @@ export class User {
   @Column('varchar', { length: 10, name: 'language', default: 'en' })
   @Field({ defaultValue: 'en' })
   language: string
+
+  @Column('varchar', { length: 3, name: 'currency', default: 'USD' })
+  @Field(() => CurrencyModel, {
+    defaultValue: { code: 'USD', name: 'US Dollar', symbol: '$' },
+  })
+  currency: CurrencyModel | string
+
+  // 💎 NUEVO: Formato numérico preferido (ej: 'dot-decimal', 'comma-decimal')
+  @Column('varchar', {
+    length: 30,
+    name: 'number_format',
+    default: 'dot-decimal',
+  })
+  @Field({ defaultValue: 'dot-decimal' })
+  numberFormat: string
+
+  // 💎 NUEVO: Onboarding completado en true por defecto para no afectar a cuentas viejas
+  @Column({ name: 'onboarding_completed', type: 'boolean', default: true })
+  @Field(() => Boolean, { defaultValue: true })
+  onboardingCompleted: boolean
 
   // 💡 CAMBIO CLAVE: Indicamos que la columna en la DB se llama 'created_at'
   @CreateDateColumn({ type: 'timestamp', name: 'created_at' })

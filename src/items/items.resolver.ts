@@ -33,6 +33,7 @@ import { getProductTemplateConfig } from 'src/excel/excel.template.config'
 import { ExcelService } from 'src/excel/excel.service'
 import { EXCEL_HEADERS } from 'src/common/i18n/excel-headers'
 import { Headers } from '@nestjs/common'
+import { ProductMetricsType } from './types/product-metrics.type'
 
 @Resolver(() => Item)
 export class ItemsResolver {
@@ -70,14 +71,12 @@ export class ItemsResolver {
     return this.itemsService.getItems(user.id, filters, pagination)
   }
 
-  /*
-  @Query(() => [Item], { name: 'syncItems' })
-  async getSyncItems(
+  @Query(() => ProductMetricsType, { name: 'productMetrics' })
+  async getProductMetrics(
     @CurrentUser() user: User,
-    @Args('updatedSince') updatedSince: string, // Fecha ISO recibida de la app
-  ): Promise<Item[]> {
-    return this.itemsService.getSyncItems(user.id, new Date(updatedSince))
-  }*/
+  ): Promise<ProductMetricsType> {
+    return this.itemsService.getMetrics(user.id)
+  }
 
   @Query(() => Item, { name: 'item', nullable: true })
   async findOne(
