@@ -94,6 +94,7 @@ export class UsersService {
       // Valores por defecto (FREE, NON_SUBSCRIBED) se aplican automáticamente por la entidad.
       subscriptionStatus: SubscriptionStatus.NON_SUBSCRIBED,
       accessLevel: AccessLevel.FREE,
+      onboardingCompleted: false,
     })
 
     try {
