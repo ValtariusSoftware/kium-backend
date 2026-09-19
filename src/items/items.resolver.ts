@@ -31,7 +31,7 @@ import { ExcelParserService } from 'src/excel/excel-parser.service'
 import { GraphQLUpload, FileUpload } from 'graphql-upload-ts'
 import { getProductTemplateConfig } from 'src/excel/excel.template.config'
 import { ExcelService } from 'src/excel/excel.service'
-import { EXCEL_HEADERS } from 'src/common/i18n/excel-headers'
+// import { EXCEL_HEADERS } from 'src/common/i18n/excel-headers'
 import { Headers } from '@nestjs/common'
 import { ProductMetricsType } from './types/product-metrics.type'
 
@@ -138,7 +138,7 @@ export class ItemsResolver {
     return this.itemsService.createBulk(user.id, user.accessLevel, inputs)
   }*/
 
-  @Mutation(() => BulkItemResponse)
+  /*@Mutation(() => BulkItemResponse)
   async uploadBulkProducts(
     @Args({ name: 'file', type: () => GraphQLUpload }) file: FileUpload,
     @CurrentUser() user: User,
@@ -170,15 +170,22 @@ export class ItemsResolver {
       created: result.created,
       errors: [...parserErrors, ...result.errors],
     }
-  }
+  }*/
 
   @Mutation(() => BulkItemResponse)
   async upsertBulkProducts(
     @Args({ name: 'file', type: () => GraphQLUpload }) file: FileUpload,
     @CurrentUser() user: User,
+    @Args({ name: 'expectedType', type: () => String, nullable: true })
+    expectedType?: string,
   ): Promise<BulkItemResponse> {
     // LOG 1: Verificar que el objeto file llega
-    console.log('LOG_DEBUG: Inicio de mutación. Archivo:', file?.filename)
+    console.log(
+      'LOG_DEBUG: Inicio de mutación. Archivo:',
+      file?.filename,
+      '| Tipo esperado:',
+      expectedType,
+    )
     const { createReadStream } = await file
     const chunks: Buffer[] = []
     // LOG 2: Verificar que el stream inicia
@@ -200,9 +207,12 @@ export class ItemsResolver {
       'bytes',
     )
 
-    // 1. Parseamos
-    const { items, errors: parserErrors } =
-      await this.excelParserService.parse(buffer)
+    // 1. Parseamos pasándole el nombre real del archivo (file.filename) para la autodetección
+    const { items, errors: parserErrors } = await this.excelParserService.parse(
+      buffer,
+      file.filename,
+      expectedType,
+    )
     console.log(
       'LOG_DEBUG: Items parseados:',
       items.length,
@@ -210,10 +220,10 @@ export class ItemsResolver {
       parserErrors.length,
     )
 
-    // 2. Ejecutamos el upsert inteligente (pasando el accessLevel)
+    // 2. Ejecutamos el upsert inteligente
     const result = await this.itemsService.upsertBulk(
       user.id,
-      user.accessLevel, // <--- Aquí validamos la suscripción
+      user.accessLevel,
       items as unknown as BulkUpdateItemInput[],
     )
 
@@ -346,12 +356,21 @@ export class ItemsResolver {
   @Mutation(() => String)
   async getTemplate(
     @Args('lang') lang: string,
-    @CurrentUser() user: User, // <--- Agregamos esto
+    @Args('productType', { type: () => String }) productType: string,
+    @CurrentUser() user: User,
   ): Promise<string> {
-    console.log(user)
-    console.log('Idioma recibido:', lang)
-    console.log('Cabecera disponible:', EXCEL_HEADERS.name)
-    const columnConfig = getProductTemplateConfig(lang)
-    return await this.excelService.generate(columnConfig, lang)
+    console.log(
+      'Usuario:',
+      user.id,
+      'Idioma:',
+      lang,
+      'Tipo de planilla:',
+      productType,
+    )
+
+    const columnConfig = getProductTemplateConfig(productType, lang)
+
+    // Le pasamos el productType para que el servicio arme bien el nombre
+    return await this.excelService.generate(columnConfig, lang, productType)
   }
 }

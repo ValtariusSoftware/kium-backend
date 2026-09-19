@@ -9,7 +9,7 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { DataSource, Repository, QueryRunner, Not, In } from 'typeorm'
 import { InventoryTransaction } from './entities/inventory-transaction.entity'
 import { RegisterTransactionInput } from './dto/register-transaction.input'
-import { Item } from '../items/entities/item.entity' // Necesario para actualizar stock
+import { Item, ItemType } from '../items/entities/item.entity' // Necesario para actualizar stock
 import { TransactionType } from './enums/transaction-type.enum'
 import {
   FinancialDataPoint,
@@ -80,8 +80,11 @@ export class InventoryTransactionsService {
           : Math.abs(input.quantity)
       }
 
-      // --- 1. VALIDACIÓN DE STOCK ---
-      if (outTypes.includes(input.type)) {
+      // --- 0.5. VERIFICAR SI ES UN SERVICIO ---
+      const isService = item.itemType === ItemType.SERVICE
+
+      // --- 1. VALIDACIÓN DE STOCK (Solo si NO es un servicio) ---
+      if (!isService && outTypes.includes(input.type)) {
         if (Number(item.stock) + finalQuantity < 0) {
           throw new BadRequestException(ItemErrorCode.INSUFFICIENT_STOCK)
         }
@@ -125,6 +128,9 @@ export class InventoryTransactionsService {
         if (!item.isProduced) {
           await runner.manager.update(Item, item.id, {
             costPrice: unitCostSnapshot,
+            ...(input.salePriceSnapshot !== undefined && {
+              salePrice: input.salePriceSnapshot,
+            }), // 👈 Agregar si deseas actualizar el precio de venta maestro al reabastecer
           })
 
           if (item.isIngredient) {
@@ -158,13 +164,15 @@ export class InventoryTransactionsService {
         await runner.manager.update(Item, item.id, updateData)
       }
 
-      // --- 5. ACTUALIZAR STOCK FÍSICO ---
-      await runner.manager.increment(
-        Item,
-        { id: input.itemId },
-        'stock',
-        finalQuantity,
-      )
+      // --- 5. ACTUALIZAR STOCK FÍSICO (Solo si NO es un servicio) ---
+      if (!isService) {
+        await runner.manager.increment(
+          Item,
+          { id: input.itemId },
+          'stock',
+          finalQuantity,
+        )
+      }
 
       if (!externalRunner) await runner.commitTransaction()
       return savedTransaction

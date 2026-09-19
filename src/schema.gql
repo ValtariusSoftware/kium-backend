@@ -460,8 +460,7 @@ type Mutation {
   removeRecipe(id: ID!): Boolean!
   createItem(createItemInput: CreateItemInput!): Item!
   updateItem(updateItemInput: UpdateItemInput!): Item!
-  uploadBulkProducts(file: Upload!): BulkItemResponse!
-  upsertBulkProducts(file: Upload!): BulkItemResponse!
+  upsertBulkProducts(file: Upload!, expectedType: String): BulkItemResponse!
 
   """Realiza un borrado lógico de un ítem"""
   removeItem(id: ID!): Boolean!
@@ -469,7 +468,7 @@ type Mutation {
   updateItemsBulk(inputs: [BulkUpdateItemInput!]!): [Item!]!
   changeItemStructure(input: ReconfigureItemInput!): ReconfigureItemResponse!
   verifyItemStructure(id: ID!): Item!
-  getTemplate(lang: String!): String!
+  getTemplate(lang: String!, productType: String!): String!
 
   """
   Registra un movimiento de stock (Compra, Venta, Ajuste, Producción) y actualiza el stock total del Item.
