@@ -9,9 +9,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule)
   // ESTO ES LO ÚNICO QUE TIENE QUE ESTAR AQUÍ PARA SABER SI EL REQUEST LLEGA
   app.use((req, res, next) => {
-    console.log('LOG_DEBUG: Petición recibida en URL:', req.url)
-    console.log('LOG_DEBUG: Headers:', JSON.stringify(req.headers))
-    console.log('LOG_DEBUG: Content-Type detectado:', req.get('content-type'))
+    // console.log('LOG_DEBUG: Petición recibida en URL:', req.url)
+    // console.log('LOG_DEBUG: Headers:', JSON.stringify(req.headers))
+    // console.log('LOG_DEBUG: Content-Type detectado:', req.get('content-type'))
     next()
   })
   // const configService = app.get(ConfigService)
@@ -29,7 +29,8 @@ async function bootstrap() {
     origin: origins,
     credentials: true,
     methods: 'GET,HEAD,PUT,PATCH,POST,DELETE,OPTIONS',
-    allowedHeaders: 'Content-Type, Authorization, x-client-id',
+    allowedHeaders:
+      'Content-Type, Authorization, x-client-id, apollo-require-preflight',
   })
 
   app.useGlobalPipes(

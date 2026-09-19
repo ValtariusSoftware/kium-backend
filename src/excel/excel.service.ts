@@ -58,14 +58,13 @@ export class ExcelService {
   async generate(
     columns: ColumnConfig[],
     lang: string = 'en',
+    productType: string = 'resale', // <--- Recibimos el tipo de producto
   ): Promise<string> {
-    // 1. Selección de idioma
     const langData = I18N_EXCEL[lang] || I18N_EXCEL['en']
 
     const workbook = new ExcelJS.Workbook()
     const sheet = workbook.addWorksheet(langData.sheetName)
 
-    // Obtenemos el mensaje de error según el idioma recibido
     const errorMessage = VALIDATION_MESSAGES[lang] || VALIDATION_MESSAGES['en']
 
     sheet.columns = columns.map((c) => ({
@@ -77,18 +76,14 @@ export class ExcelService {
     columns.forEach((col, index) => {
       if (col.dropdown) {
         const colNumber = index + 1
-
-        // 1. Esto es lo que el usuario ve en el Dropdown
         const labels = col.dropdown.options.map((opt) => opt.label)
 
-        // 2. Aplicamos la validación con las ETIQUETAS (lo que ve el usuario)
         for (let row = 2; row <= 3000; row++) {
           const cell = sheet.getCell(row, colNumber)
 
           cell.dataValidation = {
             type: 'list',
             allowBlank: true,
-            // AQUÍ PASAMOS LAS ETIQUETAS PARA QUE EL DROPDOWN SEA AMIGABLE
             formulae: [`"${labels.join(',')}"`],
             showErrorMessage: true,
             error: errorMessage,
@@ -97,7 +92,18 @@ export class ExcelService {
       }
     })
 
-    const fileName = `${langData.filePrefix}_${Date.now()}.xlsx`
+    // Mapeamos el productType al nombre de la clave en filePrefixes
+    const typeKeyMap: Record<string, string> = {
+      RESALE: 'resale',
+      PRODUCED_FINAL: 'produced',
+      PURCHASED_INGREDIENT: 'ingredient',
+      SERVICE: 'service',
+    }
+
+    const normalizedKey = typeKeyMap[productType] || 'resale'
+    const prefix = langData.filePrefixes[normalizedKey] || 'Kium_Template'
+
+    const fileName = `${prefix}_${Date.now()}.xlsx`
     await workbook.xlsx.writeFile(path.join(this.tempDir, fileName))
     return fileName
   }

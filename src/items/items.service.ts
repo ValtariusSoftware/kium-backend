@@ -301,6 +301,8 @@ export class ItemsService {
         'locked',
       )
       .where('item.userId = :userId', { userId })
+      // Excluimos los servicios para que las métricas reflejen únicamente los 6 productos
+      .andWhere('item.itemType != :itemType', { itemType: 'SERVICE' })
 
     const result = await query.getRawOne()
 
