@@ -4,6 +4,7 @@ import { UsersService } from './users.service'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { UpdateAccessLevelInput } from './dto/update-access-level.input'
 import { CurrencyType } from './dto/currency.type'
+import { TesterActivityReportType } from './dto/tester-activity-report.type'
 @Resolver(() => User)
 export class UsersResolver {
   constructor(private usersService: UsersService) {}
@@ -117,5 +118,18 @@ export class UsersResolver {
     numberFormat?: string,
   ): Promise<User> {
     return this.usersService.updateUserPreferences(user, currency, numberFormat)
+  }
+
+  @Query(() => [TesterActivityReportType], { name: 'testerActivityReport' })
+  async getTesterActivityReport(
+    @CurrentUser() user: User, // Mantiene tu estándar de seguridad
+    @Context() context: any,
+  ): Promise<TesterActivityReportType[]> {
+    console.log(user)
+    // 2. Extraemos el header independientemente de si viene en minúscula o mayúscula
+    const req = context.req || context.connection?.context
+    const devKey =
+      req?.headers['x-dev-reset-key'] || req?.headers['X-Dev-Reset-Key']
+    return this.usersService.getTesterActivityReport(devKey)
   }
 }
