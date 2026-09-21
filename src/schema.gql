@@ -191,6 +191,15 @@ type CurrencyType {
   symbol: String!
 }
 
+type TesterActivityReportType {
+  userId: String!
+  email: String
+  accessLevel: String
+  totalProducts: Int!
+  totalTransactions: Int!
+  lastOperationDate: String
+}
+
 type NotificationCampaignTranslation {
   id: ID!
   languageCode: String!
@@ -396,6 +405,7 @@ type Query {
   users: [User!]!
   availableCurrencies(lang: String): [CurrencyType!]!
   searchCurrencies(search: String!, lang: String): [CurrencyType!]!
+  testerActivityReport: [TesterActivityReportType!]!
   notificationCampaigns: [NotificationCampaign!]!
   getHomeDashboard: DashboardSummary!
   getTopSellingDetailed(pagination: PaginationInput): PaginatedTopProducts!
