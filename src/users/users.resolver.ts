@@ -108,4 +108,14 @@ export class UsersResolver {
       numberFormat,
     )
   }
+
+  @Mutation(() => User, { name: 'updateUserPreferences' })
+  async updateUserPreferences(
+    @CurrentUser() user: User,
+    @Args('currency', { type: () => String, nullable: true }) currency?: string,
+    @Args('numberFormat', { type: () => String, nullable: true })
+    numberFormat?: string,
+  ): Promise<User> {
+    return this.usersService.updateUserPreferences(user, currency, numberFormat)
+  }
 }

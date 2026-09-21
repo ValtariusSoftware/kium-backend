@@ -490,6 +490,7 @@ type Mutation {
   deleteUserAccount: Boolean!
   resetMyTestData: Boolean!
   completeOnboarding(currency: String!, numberFormat: String!): User!
+  updateUserPreferences(currency: String, numberFormat: String): User!
   createNotificationCampaigns(inputs: [CreateNotificationCampaignInput!]!): [NotificationCampaign!]!
   updateNotificationCampaigns(inputs: [UpdateNotificationCampaignInput!]!): [NotificationCampaign!]!
   removeNotificationCampaigns(ids: [String!]!): Boolean!
@@ -551,6 +552,7 @@ input UpdateItemInput {
   id: ID!
   name: String
   minStockAlert: Float
+  costPrice: Float
   salePrice: Float
   barcode: String
   sku: String
@@ -563,6 +565,7 @@ input BulkUpdateItemInput {
   id: ID!
   name: String
   minStockAlert: Float
+  costPrice: Float
   salePrice: Float
   barcode: String
   sku: String

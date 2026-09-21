@@ -540,4 +540,59 @@ export class UsersService {
       currency: currencyObject as any,
     }
   }
+
+  async updateUserPreferences(
+    user: User | null,
+    currency?: string,
+    numberFormat?: string,
+  ): Promise<User> {
+    if (!user) {
+      throw new UnauthorizedException('No autorizado')
+    }
+
+    // 1. Validar moneda si se envió
+    let upperCurrency: string =
+      typeof user.currency === 'string' ? user.currency : ''
+
+    if (currency) {
+      const supportedCurrencies = Intl.supportedValuesOf('currency')
+      upperCurrency = currency.toUpperCase()
+
+      if (!supportedCurrencies.includes(upperCurrency)) {
+        throw new BadRequestException(`La moneda '${currency}' no es válida.`)
+      }
+      user.currency = upperCurrency
+    }
+
+    // 2. Validar formato numérico si se envió
+    if (numberFormat) {
+      const validNumberFormats = ['dot-decimal', 'comma-decimal']
+      if (!validNumberFormats.includes(numberFormat)) {
+        throw new BadRequestException(
+          `El formato numérico '${numberFormat}' no es válido.`,
+        )
+      }
+      user.numberFormat = numberFormat
+    }
+
+    // 3. Guardar en base de datos
+    const savedUser = await this.usersRepository.save(user)
+
+    // 4. Transformar currency a objeto para GraphQL (ahora garantizamos que upperCurrency es string)
+    const currencyResults = await this.searchCurrencies(
+      savedUser,
+      upperCurrency,
+      savedUser.language,
+    )
+
+    const currencyObject =
+      currencyResults.length > 0
+        ? currencyResults[0]
+        : { code: upperCurrency, name: upperCurrency, symbol: upperCurrency }
+
+    return {
+      ...savedUser,
+      currency: currencyObject as any,
+    }
+  }
 }
