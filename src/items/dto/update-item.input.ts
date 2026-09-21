@@ -22,6 +22,15 @@ export class UpdateItemInput {
 
   @Field(() => Float, { nullable: true })
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Transform(({ value }) =>
+    value !== undefined && value !== null ? Math.round(value) : value,
+  )
+  costPrice?: number // 👈 Permitido en el input (el backend decide si lo aplica o lo rechaza según si es Service)
+
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
   salePrice?: number // El precio de venta sí es catálogo (decisión comercial)
 
   @Field({ nullable: true })
@@ -46,6 +55,15 @@ export class BulkUpdateItemInput {
 
   // @Field(() => Float, { nullable: true })
   // salePrice?: number
+
+  @Field(() => Float, { nullable: true })
+  @IsOptional()
+  @IsNumber()
+  @Min(0)
+  @Transform(({ value }) =>
+    value !== undefined && value !== null ? Math.round(value) : value,
+  )
+  costPrice?: number // 👈 Añadido también para masivos si fuera un servicio
 
   @Field(() => Float, { nullable: true })
   @IsOptional()

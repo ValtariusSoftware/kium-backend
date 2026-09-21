@@ -10,7 +10,7 @@ import {
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, DataSource, In } from 'typeorm'
-import { BaseUnit, Item } from './entities/item.entity'
+import { BaseUnit, Item, ItemType } from './entities/item.entity'
 import { AccessLevel } from '../users/entities/user.entity' // Asumiendo que esta es la ruta correcta
 import {
   BulkItemError,
@@ -376,6 +376,7 @@ export class ItemsService {
     if (!item) {
       throw new NotFoundException(ItemErrorCode.ITEM_NOT_FOUND)
     }
+    const isService = item.itemType === ItemType.SERVICE
 
     // 1. Solo necesitamos recalcular roles si cambia el salePrice
     // (porque el costPrice ahora es "fijo" para este método)
@@ -406,10 +407,17 @@ export class ItemsService {
       item.isDraft = false
     }
 
-    // 2. Fusionar el resto (nombre, barcode, sku, etc.)
-    // IMPORTANTE: Asegurate que UpdateItemInput no traiga costPrice,
-    // o si lo trae, ignoralo aquí para que no pise el valor de inventario.
-    delete (updateData as any).costPrice
+    // 3. REGLA DIFERENCIADA PARA COSTOS:
+    if (isService) {
+      // Si es un servicio, SÍ permitimos actualizar el costo directamente desde el catálogo
+      if (updateData.costPrice !== undefined) {
+        updateData.costPrice = Math.round(updateData.costPrice || 0)
+      }
+    } else {
+      // Si es un producto físico/insumo, Mantenemos el blindaje estricto: el costo no se toca por catálogo
+      delete (updateData as any).costPrice
+    }
+
     Object.assign(item, updateData)
 
     try {
@@ -782,7 +790,6 @@ export class ItemsService {
     accessLevel: AccessLevel,
     inputs: BulkUpdateItemInput[],
   ): Promise<Item[]> {
-    // 1. Validar permiso y límite de lote dinámicamente
     const batchLimit = await this.subscriptionsService.getLimit(
       SubscriptionFeatureSlug.MULTI_PRODUCT_UPDATE,
       accessLevel,
@@ -799,11 +806,10 @@ export class ItemsService {
     const queryRunner = this.dataSource.createQueryRunner()
     await queryRunner.connect()
 
-    const errorDetails: string[] = [] // Formato: "Nombre:CodigoEnum"
+    const errorDetails: string[] = []
     const updatedIds: string[] = []
 
     for (const input of inputs) {
-      // 🚩 LIMPIEZA INICIAL: Trim a los strings antes de cualquier lógica
       if (input.name) input.name = input.name.trim()
       if (input.sku) input.sku = input.sku.trim()
       if (input.barcode) input.barcode = input.barcode.trim()
@@ -822,23 +828,23 @@ export class ItemsService {
           continue
         }
 
-        // --- VALIDACIONES DE NEGOCIO ---
+        const isService = item.itemType === ItemType.SERVICE
 
-        // 1. Validar Nombre (Ya tiene el trim hecho arriba)
         if (input.name !== undefined && input.name.length === 0) {
           errorDetails.push(`${item.name}:${ItemErrorCode.NAME_EMPTY}`)
           await queryRunner.rollbackTransaction()
           continue
         }
 
-        // Recalcular roles (Profit, etc) si el precio de venta cambió
-        // --- AJUSTE BIGINT: Sanitizar el precio de venta si viene ---
+        // 1. Manejo de Precios y Roles
         if (input.salePrice !== undefined) {
-          input.salePrice = Math.round(input.salePrice || 0) // Convertir a centavos limpios
+          input.salePrice = Math.round(input.salePrice || 0)
 
           const fakeInput: any = {
             salePrice: input.salePrice,
-            costPrice: item.costPrice,
+            costPrice: isService
+              ? (input.costPrice ?? item.costPrice)
+              : item.costPrice,
           }
 
           const newRoles = this.itemsDomainService.calculateItemRoles(
@@ -848,7 +854,7 @@ export class ItemsService {
           Object.assign(item, newRoles)
         }
 
-        // 3. 🚩 SALIR DE BORRADOR: Si el ítem era borrador y ahora tiene un precio válido asignado, pasa a false
+        // 2. Salir de borrador
         const effectiveSalePrice =
           input.salePrice !== undefined ? input.salePrice : item.salePrice
         if (
@@ -860,8 +866,14 @@ export class ItemsService {
           item.isDraft = false
         }
 
-        // 🚩 IMPORTANTE: El costo NO se toca en el catálogo. Lo eliminamos del input por seguridad.
-        delete (input as any).costPrice
+        // 3. REGLA DIFERENCIADA PARA COSTOS (Igual que en el update individual)
+        if (isService) {
+          if (input.costPrice !== undefined) {
+            input.costPrice = Math.round(input.costPrice || 0)
+          }
+        } else {
+          delete (input as any).costPrice
+        }
 
         Object.assign(item, input)
         await queryRunner.manager.save(item)
@@ -885,15 +897,13 @@ export class ItemsService {
     }
     await queryRunner.release()
 
-    // 2. Si hubo errores en el proceso parcial, lanzamos la excepción para el GqlExceptionFilter
     if (errorDetails.length > 0) {
       throw new ForbiddenException({
-        message: ItemErrorCode.BULK_PARTIAL_SUCCESS, // Usamos el Enum
+        message: ItemErrorCode.BULK_PARTIAL_SUCCESS,
         details: errorDetails,
       })
     }
 
-    // 3. Éxito total
     return this.itemsRepository.find({
       where: { id: In(updatedIds), userId },
       order: { name: 'ASC' },
