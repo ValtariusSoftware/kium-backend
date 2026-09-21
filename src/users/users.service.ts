@@ -602,6 +602,7 @@ export class UsersService {
     if (devKey !== expectedKey) {
       throw new UnauthorizedException('Clave secreta de reseteo inválida.')
     }
+
     const query = `
       SELECT 
         u.id AS "userId",
@@ -609,12 +610,12 @@ export class UsersService {
         u.access_level AS "accessLevel",
         COUNT(DISTINCT i.id) AS "totalProducts",
         COUNT(DISTINCT t.id) AS "totalTransactions",
-        MAX(t.created_at) AS "lastOperationDate"
+        TO_CHAR(MAX(t.created_at), 'YYYY-MM-DD HH24:MI:SS') AS "lastOperationDate"
       FROM stock_control.users u
       LEFT JOIN stock_control.items i ON i.user_id = u.id AND i.deleted_at IS NULL
       LEFT JOIN stock_control.inventory_transactions t ON t.user_id = u.id
       GROUP BY u.id, u.email, u.access_level
-      ORDER BY "lastOperationDate" DESC NULLS LAST;
+      ORDER BY MAX(t.created_at) DESC NULLS LAST;
     `
 
     return this.usersRepository.query(query)
