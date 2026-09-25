@@ -116,8 +116,25 @@ export class UsersResolver {
     @Args('currency', { type: () => String, nullable: true }) currency?: string,
     @Args('numberFormat', { type: () => String, nullable: true })
     numberFormat?: string,
+    @Context() context?: any,
   ): Promise<User> {
-    return this.usersService.updateUserPreferences(user, currency, numberFormat)
+    const originClientId = context?.req?.headers['x-client-id'] || null
+
+    // 🔍 LOG DEPURACIÓN EN RESOLVER
+    console.log('📝 [GraphQL] updateUserPreferences ejecutado con:', {
+      userEmail: user?.email,
+      userId: user?.id,
+      currency,
+      numberFormat,
+      originClientId,
+    })
+
+    return this.usersService.updateUserPreferences(
+      user,
+      currency,
+      numberFormat,
+      originClientId,
+    )
   }
 
   @Query(() => [TesterActivityReportType], { name: 'testerActivityReport' })

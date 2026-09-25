@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common'
+import { forwardRef, Module } from '@nestjs/common'
 import { UsersModule } from '../users/users.module'
 import { AuthResolver } from './auth.resolver'
 import { AuthService } from './auth.service'
@@ -11,7 +11,7 @@ import { PassportModule } from '@nestjs/passport' // 💡 Necesario para el sist
 
 @Module({
   imports: [
-    UsersModule,
+    forwardRef(() => UsersModule),
     FirebaseModule,
     // 💡 PASO 1: IMPORTAMOS PASSPORT
     PassportModule.register({ defaultStrategy: 'jwt' }), // CONFIGURACIÓN DEL JWT:

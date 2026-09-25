@@ -1,5 +1,5 @@
 // src/sync/sync.module.ts
-import { Module } from '@nestjs/common'
+import { forwardRef, Module } from '@nestjs/common'
 import { TypeOrmModule } from '@nestjs/typeorm'
 import { SyncGateway } from './sync.gateway'
 import { SyncEventEntity } from './entities/sync-event.entity'
@@ -11,8 +11,8 @@ import { AuthModule } from 'src/auth/auth.module'
 @Module({
   imports: [
     TypeOrmModule.forFeature([SyncEventEntity]), // Registramos la entidad para que TypeORM cree la tabla
-    UsersModule,
-    AuthModule,
+    forwardRef(() => UsersModule),
+    forwardRef(() => AuthModule),
   ],
   providers: [SyncGateway, SyncService, SyncResolver],
   exports: [

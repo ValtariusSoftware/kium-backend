@@ -12,7 +12,7 @@ import {
   BadRequestException,
 } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
-import { Repository } from 'typeorm'
+import { DataSource, Repository } from 'typeorm'
 import { AccessLevel, SubscriptionStatus, User } from './entities/user.entity'
 import { UserErrorCode } from './enums/user-error-code.enum'
 import * as admin from 'firebase-admin'
@@ -20,6 +20,9 @@ import { Item } from 'src/items/entities/item.entity'
 import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
 import { SyncEventEntity } from 'src/sync/entities/sync-event.entity'
 import { Sale } from 'src/sales/entities/sale.entity'
+import { SyncGateway } from 'src/sync/sync.gateway'
+import { SyncService } from 'src/sync/sync.service'
+import { EntityType } from 'src/common/constants/entities.constant'
 // 🚨 Definimos una interfaz para el payload del token decodificado de Firebase
 // Usamos solo los campos necesarios
 interface FormattedCurrency {
@@ -50,6 +53,9 @@ export class UsersService {
     @Inject('FIREBASE_ADMIN') private readonly firebaseApp: admin.app.App,
     @InjectRepository(Sale)
     private readonly salesRepository: Repository<Sale>,
+    private readonly dataSource: DataSource, // 👈 Inyectado para transacciones
+    private readonly syncGateway: SyncGateway, // 👈 Inyectado para WebSockets
+    private readonly syncService: SyncService,
   ) {}
 
   // Método para buscar todos los usuarios
@@ -58,8 +64,33 @@ export class UsersService {
   }
 
   async findOneById(id: string): Promise<User | null> {
-    // Se usa findOne por si hay filtros ocultos (como soft-delete)
-    return this.usersRepository.findOne({ where: { id } })
+    const user = await this.usersRepository.findOne({ where: { id } })
+    if (!user) return null
+
+    // 1. Extraemos el código de moneda (ya sea que esté guardado como string o como objeto)
+    const currencyCode =
+      typeof user.currency === 'string'
+        ? user.currency
+        : (user.currency as any)?.code || 'USD'
+
+    // 2. Buscamos los datos completos de la moneda usando tu función existente
+    const currencyResults = await this.searchCurrencies(
+      user,
+      currencyCode,
+      user.language,
+    )
+
+    // 3. Creamos el objeto con fallback por si no se encuentra en la lista
+    const currencyObject =
+      currencyResults.length > 0
+        ? currencyResults[0]
+        : { code: currencyCode, name: currencyCode, symbol: currencyCode }
+
+    // 4. Retornamos el usuario inyectando el objeto de moneda mapeado para GraphQL
+    return {
+      ...user,
+      currency: currencyObject,
+    } as any
   }
 
   /**
@@ -545,12 +576,18 @@ export class UsersService {
     user: User | null,
     currency?: string,
     numberFormat?: string,
+    originClientId?: string,
   ): Promise<User> {
     if (!user) {
+      console.error('❌ [UserService] Error: Usuario no autorizado o nulo')
       throw new UnauthorizedException('No autorizado')
     }
 
-    // 1. Validar moneda si se envió
+    console.log(
+      '🔍 [UserService] Procesando preferencias para usuario ID:',
+      user.id,
+    )
+
     let upperCurrency: string =
       typeof user.currency === 'string' ? user.currency : ''
 
@@ -564,7 +601,6 @@ export class UsersService {
       user.currency = upperCurrency
     }
 
-    // 2. Validar formato numérico si se envió
     if (numberFormat) {
       const validNumberFormats = ['dot-decimal', 'comma-decimal']
       if (!validNumberFormats.includes(numberFormat)) {
@@ -575,24 +611,65 @@ export class UsersService {
       user.numberFormat = numberFormat
     }
 
-    // 3. Guardar en base de datos
-    const savedUser = await this.usersRepository.save(user)
+    const queryRunner = this.dataSource.createQueryRunner()
+    await queryRunner.connect()
+    await queryRunner.startTransaction()
 
-    // 4. Transformar currency a objeto para GraphQL (ahora garantizamos que upperCurrency es string)
-    const currencyResults = await this.searchCurrencies(
-      savedUser,
-      upperCurrency,
-      savedUser.language,
-    )
+    try {
+      const savedUser = await queryRunner.manager.save(User, user)
+      console.log(
+        '✅ [UserService] Usuario guardado correctamente en DB:',
+        savedUser.id,
+      )
 
-    const currencyObject =
-      currencyResults.length > 0
-        ? currencyResults[0]
-        : { code: upperCurrency, name: upperCurrency, symbol: upperCurrency }
+      // ⚡ REVISÁ ESTA LÍNEA: Si syncService.registerEvent espera un UUID en el segundo o tercer parámetro
+      console.log(
+        '⚡ [UserService] Registrando evento de sync para entidad ID:',
+        savedUser.id,
+      )
 
-    return {
-      ...savedUser,
-      currency: currencyObject as any,
+      await this.syncService.registerEvent(
+        savedUser.id, // <--- ¿Es este campo el que causa el choque con UUID?
+        EntityType.USER,
+        savedUser.id, // <--- ¿O es este?
+        'UPSERT',
+        originClientId,
+        queryRunner,
+      )
+
+      await queryRunner.commitTransaction()
+
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.USER,
+        savedUser.id,
+        originClientId,
+      )
+
+      const currencyResults = await this.searchCurrencies(
+        savedUser,
+        upperCurrency,
+        savedUser.language,
+      )
+
+      const currencyObject =
+        currencyResults.length > 0
+          ? currencyResults[0]
+          : { code: upperCurrency, name: upperCurrency, symbol: upperCurrency }
+
+      return {
+        ...savedUser,
+        currency: currencyObject as any,
+      }
+    } catch (err) {
+      console.error(
+        '❌ [UserService] Error crítico en transacción de preferencias:',
+        err.message,
+      )
+      console.error(err.stack)
+      await queryRunner.rollbackTransaction()
+      throw err
+    } finally {
+      await queryRunner.release()
     }
   }
 
