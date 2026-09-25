@@ -247,6 +247,21 @@ type PaginatedTopProducts {
   total: Int!
 }
 
+type SyncEventDto {
+  id: String!
+  sequenceNumber: String!
+  entityType: String!
+  entityId: String!
+  action: String!
+  originClientId: String
+}
+
+type SyncPayloadDto {
+  events: [SyncEventDto!]!
+  latestSequence: Int!
+  requiresFullSync: Boolean!
+}
+
 type AuthPayload {
   """El usuario autenticado/creado"""
   user: User!
@@ -341,21 +356,6 @@ type PaginatedTransactions {
 type UserStatsMetadata {
   firstMonth: String!
   lastMonth: String!
-}
-
-type SyncEventDto {
-  id: String!
-  sequenceNumber: String!
-  entityType: String!
-  entityId: String!
-  action: String!
-  originClientId: String
-}
-
-type SyncPayloadDto {
-  events: [SyncEventDto!]!
-  latestSequence: Int!
-  requiresFullSync: Boolean!
 }
 
 type IngredientConsumption {

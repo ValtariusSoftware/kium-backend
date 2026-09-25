@@ -8,6 +8,7 @@ import { Server, Socket } from 'socket.io'
 import { EntityType } from 'src/common/constants/entities.constant'
 import { JwtService } from '@nestjs/jwt'
 import { UsersService } from 'src/users/users.service' // O tu servicio para buscar al usuario
+import { forwardRef, Inject } from '@nestjs/common'
 
 @WebSocketGateway({ cors: { origin: '*' } })
 export class SyncGateway implements OnGatewayConnection, OnGatewayDisconnect {
@@ -16,7 +17,8 @@ export class SyncGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   constructor(
     private readonly jwtService: JwtService,
-    private readonly usersService: UsersService, // Opcional: si querés validar que el usuario exista en DB
+    @Inject(forwardRef(() => UsersService)) // 👈 ENVUELVE CON FORWARDREF AQUÍ
+    private readonly usersService: UsersService,
   ) {}
 
   async handleConnection(client: Socket) {

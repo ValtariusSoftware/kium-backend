@@ -29,7 +29,7 @@ export class SyncEventEntity {
   @Column({ type: 'varchar', length: 50, name: 'entity_type' })
   entityType: string // 'ITEM', 'SALE', 'RECIPE', etc.
 
-  @Column({ type: 'uuid', name: 'entity_id' })
+  @Column({ type: 'varchar', length: 255, name: 'entity_id' })
   entityId: string
 
   @Column({ type: 'varchar', length: 20 })

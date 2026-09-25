@@ -3,4 +3,5 @@ export enum EntityType {
   ITEM = 'ITEM',
   SALE = 'SALE',
   RECIPE = 'RECIPE',
+  USER = 'USER',
 }

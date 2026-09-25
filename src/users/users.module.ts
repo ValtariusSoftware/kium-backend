@@ -10,6 +10,7 @@ import { FirebaseModule } from 'src/firebase/firebase.module'
 import { SubscriptionsModule } from 'src/subscriptions/subscriptions.module'
 import { SyncEventEntity } from 'src/sync/entities/sync-event.entity'
 import { Sale } from 'src/sales/entities/sale.entity'
+import { SyncModule } from 'src/sync/sync.module'
 
 @Module({
   // Importamos la Entidad para que TypeORM sepa cómo manejar la tabla
@@ -17,6 +18,7 @@ import { Sale } from 'src/sales/entities/sale.entity'
     TypeOrmModule.forFeature([User, Item, SyncEventEntity, Sale]),
     FirebaseModule, // 👈 AGREGA ESTO AQUÍ
     forwardRef(() => SubscriptionsModule),
+    forwardRef(() => SyncModule),
   ],
   providers: [UsersService, UsersResolver],
   exports: [UsersService, TypeOrmModule],
