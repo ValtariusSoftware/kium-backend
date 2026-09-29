@@ -126,10 +126,13 @@ export class InventoryTransactionsResolver {
     })
     inputs: RegisterTransactionInput[],
     @CurrentUser() user: User, // Asumiendo que tienes este decorador
+    @Context() context?: any,
   ): Promise<InventoryTransaction[]> {
+    const originClientId = context?.req?.headers['x-client-id'] || null
     return this.inventoryTransactionsService.registerMovementsBatch(
       user.id,
       inputs,
+      originClientId,
     )
   }
 
@@ -137,11 +140,14 @@ export class InventoryTransactionsResolver {
   async adjustStock(
     @Args('adjustStockInput') adjustStockInput: AdjustStockInput,
     @CurrentUser() user: User,
+    @Context() context?: any,
   ): Promise<Item> {
+    const originClientId = context?.req?.headers['x-client-id'] || null
     // CAMBIO: Ahora llama al servicio de inventario, que es donde moviste la lógica
     return this.inventoryTransactionsService.adjustStock(
       user.id,
       adjustStockInput,
+      originClientId,
     )
   }
 }

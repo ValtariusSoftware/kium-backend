@@ -1,6 +1,6 @@
 // sales/sales.resolver.ts
 
-import { Resolver, Mutation, Args, Query } from '@nestjs/graphql'
+import { Resolver, Mutation, Args, Query, Context } from '@nestjs/graphql'
 import { SalesService } from './sales.service'
 import { Sale } from './entities/sale.entity'
 import { CreateSaleInput } from './dto/create-sale.input'
@@ -18,8 +18,14 @@ export class SalesResolver {
   async createSale(
     @CurrentUser() user: User,
     @Args('createSaleInput') createSaleInput: CreateSaleInput,
+    @Context() context?: any,
   ): Promise<Sale> {
-    return this.salesService.createSale(user.id, createSaleInput)
+    const originClientId = context?.req?.headers['x-client-id'] || null
+    return this.salesService.createSale(
+      user.id,
+      createSaleInput,
+      originClientId,
+    )
   }
 
   @Mutation(() => Sale)

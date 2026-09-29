@@ -102,11 +102,14 @@ export class UsersResolver {
     @CurrentUser() user: User,
     @Args('currency', { type: () => String }) currency: string,
     @Args('numberFormat', { type: () => String }) numberFormat: string,
+    @Context() context?: any,
   ): Promise<User> {
+    const originClientId = context?.req?.headers['x-client-id'] || null
     return this.usersService.completeOnboardingAndPreferences(
       user,
       currency,
       numberFormat,
+      originClientId,
     )
   }
 

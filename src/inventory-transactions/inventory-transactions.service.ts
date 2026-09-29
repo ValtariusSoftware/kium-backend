@@ -23,6 +23,9 @@ import { PaginationInput } from 'src/common/dto/pagination.input'
 import { ItemErrorCode } from 'src/items/enums/item-error-code.enum'
 import { UserStatsMetadata } from './dto/user-stats-metadata.output'
 import { MOCK_DATA } from './inventory-transaction.mock'
+import { SyncGateway } from 'src/sync/sync.gateway'
+import { SyncService } from 'src/sync/sync.service'
+import { EntityType } from 'src/common/constants/entities.constant'
 
 @Injectable()
 export class InventoryTransactionsService {
@@ -35,6 +38,8 @@ export class InventoryTransactionsService {
     private readonly itemsService: ItemsService,
     @Inject(forwardRef(() => RecipesService))
     private readonly recipesService: RecipesService,
+    private readonly syncGateway: SyncGateway,
+    private readonly syncService: SyncService,
   ) {}
 
   /**
@@ -174,7 +179,9 @@ export class InventoryTransactionsService {
         )
       }
 
-      if (!externalRunner) await runner.commitTransaction()
+      if (!externalRunner) {
+        await runner.commitTransaction()
+      }
       return savedTransaction
     } catch (err) {
       if (!externalRunner) await runner.rollbackTransaction()
@@ -365,6 +372,7 @@ export class InventoryTransactionsService {
   async registerMovementsBatch(
     userId: string,
     inputs: RegisterTransactionInput[],
+    originClientId?: string,
   ): Promise<InventoryTransaction[]> {
     // 🛡️ VALIDACIÓN DE NEGOCIO: Antes de abrir la transacción
     if (inputs.length > this.MAX_OPERATIONAL_BATCH_SIZE) {
@@ -390,7 +398,30 @@ export class InventoryTransactionsService {
         results.push(transaction)
       }
 
+      // 1. Obtenemos los IDs de los ítems únicos afectados en todo el lote
+      const affectedItemIds = [...new Set(inputs.map((i) => i.itemId))]
+
+      // 2. Registramos el evento de sync una sola vez por cada ítem único dentro de la misma transacción
+      for (const itemId of affectedItemIds) {
+        await this.syncService.registerEvent(
+          userId,
+          EntityType.ITEM,
+          itemId,
+          'UPSERT',
+          originClientId,
+          runner,
+        )
+      }
+
       await runner.commitTransaction()
+
+      // 3. Notificamos por WebSocket una sola vez al usuario completo (igual que en create)
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.ITEM,
+        userId,
+        originClientId,
+      )
+
       return results
     } catch (err) {
       await runner.rollbackTransaction()
@@ -404,7 +435,11 @@ export class InventoryTransactionsService {
   /**
    * Realiza un ajuste manual de stock para un ítem.
    */
-  async adjustStock(userId: string, input: AdjustStockInput): Promise<Item> {
+  async adjustStock(
+    userId: string,
+    input: AdjustStockInput,
+    originClientId?: string,
+  ): Promise<Item> {
     const queryRunner = this.dataSource.createQueryRunner()
     await queryRunner.connect()
     await queryRunner.startTransaction()
@@ -430,7 +465,24 @@ export class InventoryTransactionsService {
         queryRunner,
       )
 
+      // 1. 🔑 Registramos el evento de sync para el pull incremental
+      await this.syncService.registerEvent(
+        userId,
+        EntityType.ITEM,
+        item.id,
+        'UPSERT',
+        originClientId,
+        queryRunner,
+      )
+
       await queryRunner.commitTransaction()
+
+      // 2. ⚡ Notificamos por WebSocket para refrescar en tiempo real
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.ITEM,
+        userId,
+        originClientId,
+      )
 
       // CORRECCIÓN 3: Refrescar el item usando el service y el userId
       const updatedItem = await this.itemsService.findOne(item.id, userId)

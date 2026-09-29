@@ -524,20 +524,19 @@ export class UsersService {
     user: User | null,
     currency: string,
     numberFormat: string,
+    originClientId?: string, // 👈 Recibimos el originClientId
   ): Promise<User> {
     if (!user) {
       throw new UnauthorizedException('No autorizado')
     }
 
-    // 1. Validar moneda
+    // 1 y 2. Validaciones de moneda y formato (tus validaciones actuales)...
     const supportedCurrencies = Intl.supportedValuesOf('currency')
     const upperCurrency = currency.toUpperCase()
-
     if (!supportedCurrencies.includes(upperCurrency)) {
       throw new BadRequestException(`La moneda '${currency}' no es válida.`)
     }
 
-    // 2. Validar formato numérico
     const validNumberFormats = ['dot-decimal', 'comma-decimal']
     if (!validNumberFormats.includes(numberFormat)) {
       throw new BadRequestException(
@@ -545,30 +544,58 @@ export class UsersService {
       )
     }
 
-    // 3. Asignar nuevos valores y completar onboarding (en la DB guardamos el string)
-    user.currency = upperCurrency
-    user.numberFormat = numberFormat
-    user.onboardingCompleted = true
+    // Abrimos QueryRunner para asegurar transacciones seguras como en preferences
+    const queryRunner = this.dataSource.createQueryRunner()
+    await queryRunner.connect()
+    await queryRunner.startTransaction()
 
-    // 4. Guardar en base de datos
-    const savedUser = await this.usersRepository.save(user)
+    try {
+      user.currency = upperCurrency
+      user.numberFormat = numberFormat
+      user.onboardingCompleted = true
 
-    // 💡 5. CONVERSIÓN PARA GRAPHQL: Igual que en el login, armamos el objeto currency
-    const currencyResults = await this.searchCurrencies(
-      savedUser,
-      upperCurrency,
-      savedUser.language,
-    )
+      // Guardamos dentro de la transacción
+      const savedUser = await queryRunner.manager.save(User, user)
 
-    const currencyObject =
-      currencyResults.length > 0
-        ? currencyResults[0]
-        : { code: upperCurrency, name: upperCurrency, symbol: upperCurrency }
+      // ⚡ Registramos el evento de sync para otros dispositivos
+      await this.syncService.registerEvent(
+        savedUser.id,
+        EntityType.USER,
+        savedUser.id,
+        'UPSERT',
+        originClientId,
+        queryRunner,
+      )
 
-    // Retornamos el usuario con la moneda transformada en objeto para que GraphQL no falle
-    return {
-      ...savedUser,
-      currency: currencyObject as any,
+      await queryRunner.commitTransaction()
+
+      // 🌐 Notificamos vía WebSocket a las otras sesiones
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.USER,
+        savedUser.id,
+        originClientId,
+      )
+
+      const currencyResults = await this.searchCurrencies(
+        savedUser,
+        upperCurrency,
+        savedUser.language,
+      )
+
+      const currencyObject =
+        currencyResults.length > 0
+          ? currencyResults[0]
+          : { code: upperCurrency, name: upperCurrency, symbol: upperCurrency }
+
+      return {
+        ...savedUser,
+        currency: currencyObject as any,
+      }
+    } catch (err) {
+      await queryRunner.rollbackTransaction()
+      throw err
+    } finally {
+      await queryRunner.release()
     }
   }
 

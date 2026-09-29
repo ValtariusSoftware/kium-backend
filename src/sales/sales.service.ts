@@ -14,6 +14,9 @@ import { InjectRepository } from '@nestjs/typeorm'
 import { PaginationInput } from 'src/common/dto/pagination.input'
 import { PaginatedSales } from './dto/paginated-sales.output'
 import { ItemErrorCode } from 'src/items/enums/item-error-code.enum'
+import { SyncService } from 'src/sync/sync.service'
+import { SyncGateway } from 'src/sync/sync.gateway'
+import { EntityType } from 'src/common/constants/entities.constant'
 
 @Injectable()
 export class SalesService {
@@ -23,9 +26,15 @@ export class SalesService {
     private readonly salesRepository: Repository<Sale>,
     private readonly inventoryService: InventoryTransactionsService,
     private readonly dataSource: DataSource,
+    private readonly syncService: SyncService,
+    private readonly syncGateway: SyncGateway,
   ) {}
 
-  async createSale(userId: string, input: CreateSaleInput): Promise<Sale> {
+  async createSale(
+    userId: string,
+    input: CreateSaleInput,
+    originClientId?: string,
+  ): Promise<Sale> {
     if (input.items.length > this.MAX_SALE_ITEMS) {
       throw new BadRequestException(ItemErrorCode.BATCH_LIMIT_EXCEEDED)
     }
@@ -81,7 +90,47 @@ export class SalesService {
       savedSale.totalAmount = totalSaleAmount
       await queryRunner.manager.save(savedSale)
 
+      // 🔑 4. Obtenemos los IDs de los ítems afectados en la venta
+      const affectedItemIds = [...new Set(input.items.map((i) => i.itemId))]
+
+      // 5. Registramos evento de sync para cada ÍTEM afectado (actualiza stock)
+      for (const itemId of affectedItemIds) {
+        await this.syncService.registerEvent(
+          userId,
+          EntityType.ITEM,
+          itemId,
+          'UPSERT',
+          originClientId,
+          queryRunner,
+        )
+      }
+
+      // 6. 🛒 Registramos evento de sync para la VENTA (actualiza el historial de ventas)
+      await this.syncService.registerEvent(
+        userId,
+        EntityType.SALE,
+        savedSale.id,
+        'UPSERT',
+        originClientId,
+        queryRunner,
+      )
+
       await queryRunner.commitTransaction()
+
+      // ⚡ 7. Notificamos por WebSocket una sola vez al usuario completo de que hubo cambios
+      // this.syncGateway.notifyEntityUpdated(
+      //   EntityType.ITEM,
+      //   userId,
+      //   originClientId,
+      // )
+
+      // ⚡ 7. Notificamos por WebSocket indicando que se actualizó la VENTA
+      // (o podés enviar EntityType.SALE para que el cliente sepa que hay una venta nueva)
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.SALE,
+        userId,
+        originClientId,
+      )
 
       const finalSale = await this.salesRepository.findOne({
         where: { id: savedSale.id },
@@ -99,7 +148,11 @@ export class SalesService {
     }
   }
 
-  async voidSale(userId: string, saleId: string): Promise<Sale> {
+  async voidSale(
+    userId: string,
+    saleId: string,
+    originClientId?: string,
+  ): Promise<Sale> {
     const queryRunner = this.dataSource.createQueryRunner()
     await queryRunner.connect()
     await queryRunner.startTransaction()
@@ -135,7 +188,40 @@ export class SalesService {
       sale.isVoided = true
       const updatedSale = await queryRunner.manager.save(sale)
 
+      // 4. Obtenemos los IDs de los ítems afectados para actualizar su stock local
+      const affectedItemIds = [...new Set(sale.items.map((i) => i.itemId))]
+
+      // 5. Registramos evento de sync para cada ÍTEM afectado (devuelve el stock)
+      for (const itemId of affectedItemIds) {
+        await this.syncService.registerEvent(
+          userId,
+          EntityType.ITEM,
+          itemId,
+          'UPSERT',
+          originClientId,
+          queryRunner,
+        )
+      }
+
+      // 6. 🛒 Registramos evento de sync para la VENTA (actualiza el estado de anulación)
+      await this.syncService.registerEvent(
+        userId,
+        EntityType.SALE,
+        sale.id,
+        'UPSERT',
+        originClientId,
+        queryRunner,
+      )
+
       await queryRunner.commitTransaction()
+
+      // ⚡ 7. Notificamos por WebSocket que hubo cambios en las ventas
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.SALE,
+        userId,
+        originClientId,
+      )
+
       return updatedSale
     } catch (err) {
       await queryRunner.rollbackTransaction()
