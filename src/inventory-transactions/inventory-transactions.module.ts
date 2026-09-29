@@ -6,12 +6,14 @@ import { InventoryTransaction } from './entities/inventory-transaction.entity'
 import { Item } from '../items/entities/item.entity' // Asegúrate de que Items esté disponible si es un módulo independiente
 import { ItemsModule } from 'src/items/items.module'
 import { RecipesModule } from 'src/recipes/recipes.module'
+import { SyncModule } from 'src/sync/sync.module'
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([InventoryTransaction, Item]), // Asegúrate de registrar Item si no está en otro módulo
     forwardRef(() => ItemsModule),
     forwardRef(() => RecipesModule),
+    SyncModule,
   ],
   providers: [InventoryTransactionsService, InventoryTransactionsResolver],
   exports: [
