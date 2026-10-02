@@ -278,40 +278,59 @@ export class ItemsService {
     }
   }
 
-  async getMetrics(userId: string) {
-    const query = this.itemsRepository
+  async getMetrics(userId: string, tab: 'products' | 'supplies' = 'products') {
+    // 1. Query base común para la pestaña activa
+    const tabQuery = this.itemsRepository
       .createQueryBuilder('item')
+      .where('item.userId = :userId', { userId })
+      .andWhere('item.deletedAt IS NULL')
+      .andWhere('item.itemType != :serviceType', { serviceType: 'SERVICE' })
+
+    if (tab === 'supplies') {
+      tabQuery.andWhere('item.isIngredient = :isIngredient', {
+        isIngredient: true,
+      })
+    } else {
+      tabQuery.andWhere('item.isIngredient = :isIngredient', {
+        isIngredient: false,
+      })
+    }
+
+    const tabResult = await tabQuery
       .select('COUNT(item.id)', 'total')
       .addSelect(
-        // Activos: Sanos (sin alerta, sin borrador, sin bloqueo)
-        'SUM(CASE WHEN item.isDraft = false AND item.isLockedByPlan = false AND (item.minStockAlert IS NULL OR item.stock > item.minStockAlert) THEN 1 ELSE 0 END)',
+        // 🎯 ACTIVOS: Todo lo que NO es borrador ni bloqueado (agrupa sanos + alertas)
+        'SUM(CASE WHEN item.isDraft = false AND item.isLockedByPlan = false THEN 1 ELSE 0 END)',
         'active',
       )
       .addSelect(
-        // En alerta: No son borradores, no están bloqueados, pero su stock está bajo
+        // 🎯 EN ALERTA: Subconjunto de los activos que tienen stock crítico
         'SUM(CASE WHEN item.isDraft = false AND item.isLockedByPlan = false AND item.minStockAlert IS NOT NULL AND item.stock <= item.minStockAlert THEN 1 ELSE 0 END)',
         'alert',
       )
-      .addSelect(
-        'SUM(CASE WHEN item.isDraft = true THEN 1 ELSE 0 END)',
-        'draft',
-      )
+      .getRawOne()
+
+    // 2. Query global exclusivamente para Borradores y Bloqueados
+    const globalQuery = this.itemsRepository
+      .createQueryBuilder('item')
+      .where('item.userId = :userId', { userId })
+      .andWhere('item.deletedAt IS NULL')
+      .andWhere('item.itemType != :serviceType', { serviceType: 'SERVICE' })
+
+    const globalResult = await globalQuery
+      .select('SUM(CASE WHEN item.isDraft = true THEN 1 ELSE 0 END)', 'draft')
       .addSelect(
         'SUM(CASE WHEN item.isLockedByPlan = true THEN 1 ELSE 0 END)',
         'locked',
       )
-      .where('item.userId = :userId', { userId })
-      // Excluimos los servicios para que las métricas reflejen únicamente los 6 productos
-      .andWhere('item.itemType != :itemType', { itemType: 'SERVICE' })
-
-    const result = await query.getRawOne()
+      .getRawOne()
 
     return {
-      total: Number(result?.total || 0),
-      active: Number(result?.active || 0),
-      alert: Number(result?.alert || 0),
-      draft: Number(result?.draft || 0),
-      locked: Number(result?.locked || 0),
+      total: Number(tabResult?.total || 0),
+      active: Number(tabResult?.active || 0), // Ahora dará 22 (21 sanos + 1 alerta)
+      alert: Number(tabResult?.alert || 0), // Dará 1 (la advertencia transversal)
+      draft: Number(globalResult?.draft || 0), // Global
+      locked: Number(globalResult?.locked || 0), // Global
     }
   }
 
@@ -369,7 +388,11 @@ export class ItemsService {
   /**
    * Actualiza los datos de un ítem existente e infiere cambios en sus roles.
    */
-  async update(userId: string, input: UpdateItemInput): Promise<Item> {
+  async update(
+    userId: string,
+    input: UpdateItemInput,
+    originClientId?: string,
+  ): Promise<Item> {
     const { id, ...updateData } = input
 
     const item = await this.findOne(id, userId)
@@ -421,7 +444,24 @@ export class ItemsService {
     Object.assign(item, updateData)
 
     try {
-      return await this.itemsRepository.save(item)
+      const savedItem = await this.itemsRepository.save(item)
+
+      // ⚡ 4. REGISTRAR EL EVENTO DE SINCRONIZACIÓN Y NOTIFICAR (Igual que en el create)
+      await this.syncService.registerEvent(
+        userId,
+        EntityType.ITEM,
+        savedItem.id,
+        'UPSERT',
+        originClientId,
+      )
+
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.ITEM,
+        userId,
+        originClientId,
+      )
+
+      return savedItem
     } catch (err) {
       this.itemsDomainService.handleDuplicateError(err)
       throw err
@@ -436,6 +476,7 @@ export class ItemsService {
     userId: string,
     accessLevel: AccessLevel,
     inputs: CreateItemInput[],
+    originClientId?: string,
   ): Promise<BulkItemResponse> {
     // 1. Validar límite de batch usando función privada
     try {
@@ -538,6 +579,16 @@ export class ItemsService {
           )
         }
 
+        // ⚡ 1. REGISTRAR EVENTO DE SYNC PARA EL NUEVO ÍTEM
+        await this.syncService.registerEvent(
+          userId,
+          EntityType.ITEM,
+          savedItem.id,
+          'UPSERT',
+          originClientId,
+          queryRunner,
+        )
+
         await queryRunner.commitTransaction()
         createdItemsIds.push(savedItem.id)
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -554,6 +605,15 @@ export class ItemsService {
     }
 
     await queryRunner.release() // Cerramos la conexión al terminar todo
+
+    // ⚡ 2. DISPARAR EL WEBSOCKET SI SE CREÓ AL MENOS UNO
+    if (createdItemsIds.length > 0) {
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.ITEM,
+        userId,
+        originClientId,
+      )
+    }
 
     // --- REFRESCO FINAL ---
     const finalCreatedItems =
@@ -575,6 +635,7 @@ export class ItemsService {
     userId: string,
     accessLevel: AccessLevel,
     inputs: BulkUpdateItemInput[],
+    originClientId?: string,
   ): Promise<BulkItemResponse> {
     // 1. Validar límite de batch usando método encapsulado
     try {
@@ -599,6 +660,7 @@ export class ItemsService {
     // Identificamos cuáles son nuevos para procesarlos con createBulk al final o en grupo
     const itemsToCreate: CreateItemInput[] = []
     const inputMap = new Map<string, BulkUpdateItemInput>()
+    const affectedItemIds: string[] = []
 
     for (let i = 0; i < inputs.length; i++) {
       const input = inputs[i]
@@ -649,7 +711,19 @@ export class ItemsService {
               where: { id: item.id },
             }),
           )
+
+          // ⚡ REGISTRAR EVENTO DE SYNC PARA EL ÍTEM ACTUALIZADO
+          await this.syncService.registerEvent(
+            userId,
+            EntityType.ITEM,
+            item.id,
+            'UPSERT',
+            originClientId,
+            queryRunner,
+          )
+
           await queryRunner.commitTransaction()
+          affectedItemIds.push(item.id)
         } else {
           // CREACIÓN: Delegamos al método robusto createBulk
           await queryRunner.rollbackTransaction()
@@ -677,6 +751,19 @@ export class ItemsService {
     }
 
     await queryRunner.release()
+
+    // ⚡ DISPARAR LA NOTIFICACIÓN POR WEBSOCKET UNA SOLA VEZ AL TERMINAR
+    if (affectedItemIds.length > 0) {
+      // Nota: Si querés registrar los eventos de sync de los creados por createBulk,
+      // podés asegurarte de pasarlos por `this.syncService.registerEvent` acá mismo
+      // o dejar que queden listados en la tabla de sync.
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.ITEM,
+        userId,
+        originClientId,
+      )
+    }
+
     return { created: results, errors }
   }
 
@@ -684,7 +771,11 @@ export class ItemsService {
    * Realiza un borrado lógico (Soft Delete) del ítem.
    * Valida integridad: No permite borrar si el ítem es ingrediente de una receta.
    */
-  async remove(id: string, userId: string): Promise<boolean> {
+  async remove(
+    id: string,
+    userId: string,
+    originClientId?: string,
+  ): Promise<boolean> {
     const item = await this.findOne(id, userId)
     if (!item) {
       throw new NotFoundException(ItemErrorCode.ITEM_NOT_FOUND)
@@ -697,8 +788,39 @@ export class ItemsService {
       throw new ForbiddenException(ItemErrorCode.ITEM_IS_INGREDIENT)
     }
 
-    await this.itemsRepository.softRemove(item)
-    return true
+    // ⚡ Declaramos e inicializamos el queryRunner para la transacción
+    const queryRunner = this.dataSource.createQueryRunner()
+    await queryRunner.connect()
+    await queryRunner.startTransaction()
+
+    try {
+      await queryRunner.manager.softRemove(item)
+
+      // ⚡ 4. REGISTRAR EL EVENTO DE SINCRONIZACIÓN Y NOTIFICAR
+      await this.syncService.registerEvent(
+        userId,
+        EntityType.ITEM,
+        id,
+        'DELETE',
+        originClientId,
+        queryRunner, // 👈 Ahora sí existe y se pasa correctamente
+      )
+
+      await queryRunner.commitTransaction()
+
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.ITEM,
+        userId,
+        originClientId,
+      )
+
+      return true
+    } catch (err) {
+      await queryRunner.rollbackTransaction()
+      throw err
+    } finally {
+      await queryRunner.release()
+    }
   }
 
   /**
@@ -709,6 +831,7 @@ export class ItemsService {
     userId: string,
     accessLevel: AccessLevel,
     ids: string[],
+    originClientId?: string,
   ): Promise<boolean> {
     // 1. Obtener límite de lote (Batch) desde la DB
     // Usamos el slug 'bulk_batch_limit' o uno específico como 'bulk_delete_limit'
@@ -770,9 +893,27 @@ export class ItemsService {
 
         // Soft Delete
         await queryRunner.manager.softRemove(item)
+
+        // 🔑 AGREGADO DE SYNC: Registramos el evento de borrado para este ítem dentro del queryRunner activo
+        await this.syncService.registerEvent(
+          userId,
+          EntityType.ITEM,
+          id,
+          'DELETE',
+          originClientId,
+          queryRunner,
+        )
       }
 
       await queryRunner.commitTransaction()
+
+      // 🌐 AGREGADO DE SYNC: Notificamos por WebSocket una sola vez al finalizar el lote exitoso
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.ITEM,
+        userId,
+        originClientId,
+      )
+
       return true
     } catch (err) {
       await queryRunner.rollbackTransaction()
@@ -789,6 +930,7 @@ export class ItemsService {
     userId: string,
     accessLevel: AccessLevel,
     inputs: BulkUpdateItemInput[],
+    originClientId?: string,
   ): Promise<Item[]> {
     const batchLimit = await this.subscriptionsService.getLimit(
       SubscriptionFeatureSlug.MULTI_PRODUCT_UPDATE,
@@ -878,8 +1020,25 @@ export class ItemsService {
         Object.assign(item, input)
         await queryRunner.manager.save(item)
 
+        // 🔑 Registramos el evento de sync para cada ítem actualizado dentro de la transacción
+        await this.syncService.registerEvent(
+          userId,
+          EntityType.ITEM,
+          item.id,
+          'UPSERT',
+          originClientId,
+          queryRunner,
+        )
+
         await queryRunner.commitTransaction()
         updatedIds.push(item.id)
+
+        // 🌐 Notificamos por WebSocket una sola vez al usuario completo
+        this.syncGateway.notifyEntityUpdated(
+          EntityType.ITEM,
+          userId,
+          originClientId,
+        )
       } catch (err: any) {
         await queryRunner.rollbackTransaction()
 

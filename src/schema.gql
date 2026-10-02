@@ -391,7 +391,7 @@ type Query {
   """Obtiene todas las recetas del usuario de forma paginada."""
   myRecipes(pagination: PaginationInput): PaginatedRecipes!
   items(filters: ItemsFilterInput, pagination: PaginationInput): PaginatedItems!
-  productMetrics: ProductMetricsType!
+  productMetrics(tab: String): ProductMetricsType!
   item(id: ID!): Item
   lowStockReport(pagination: PaginationInput): PaginatedItems!
   getItemByBarcode(barcode: String!): Item
