@@ -74,8 +74,10 @@ export class ItemsResolver {
   @Query(() => ProductMetricsType, { name: 'productMetrics' })
   async getProductMetrics(
     @CurrentUser() user: User,
+    @Args('tab', { type: () => String, nullable: true })
+    tab?: 'products' | 'supplies',
   ): Promise<ProductMetricsType> {
-    return this.itemsService.getMetrics(user.id)
+    return this.itemsService.getMetrics(user.id, tab || 'products')
   }
 
   @Query(() => Item, { name: 'item', nullable: true })
@@ -124,8 +126,10 @@ export class ItemsResolver {
   async updateItem(
     @Args('updateItemInput') updateItemInput: UpdateItemInput,
     @CurrentUser() user: User,
+    @Context() context: any,
   ): Promise<Item> {
-    return this.itemsService.update(user.id, updateItemInput)
+    const originClientId = context.req?.headers['x-client-id'] || null
+    return this.itemsService.update(user.id, updateItemInput, originClientId)
   }
 
   /*  @Mutation(() => BulkItemResponse, { name: 'createItemsBulk' }) // <--- Cambio aquí
@@ -178,7 +182,9 @@ export class ItemsResolver {
     @CurrentUser() user: User,
     @Args({ name: 'expectedType', type: () => String, nullable: true })
     expectedType?: string,
+    @Context() context?: any,
   ): Promise<BulkItemResponse> {
+    const originClientId = context?.req?.headers['x-client-id'] || null
     // LOG 1: Verificar que el objeto file llega
     console.log(
       'LOG_DEBUG: Inicio de mutación. Archivo:',
@@ -225,6 +231,7 @@ export class ItemsResolver {
       user.id,
       user.accessLevel,
       items as unknown as BulkUpdateItemInput[],
+      originClientId,
     )
 
     console.log(
@@ -247,8 +254,10 @@ export class ItemsResolver {
   async removeItem(
     @Args('id', { type: () => ID }) id: string,
     @CurrentUser() user: User, // Tu decorador de usuario autenticado
+    @Context() context: any,
   ): Promise<boolean> {
-    return this.itemsService.remove(id, user.id)
+    const originClientId = context.req?.headers['x-client-id'] || null
+    return this.itemsService.remove(id, user.id, originClientId)
   }
 
   // Mutación para Borrado Masivo
@@ -256,8 +265,15 @@ export class ItemsResolver {
   async removeItemsBulk(
     @Args('ids', { type: () => [ID] }) ids: string[],
     @CurrentUser() user: User,
+    @Context() context?: any,
   ): Promise<boolean> {
-    return this.itemsService.removeBulk(user.id, user.accessLevel, ids)
+    const originClientId = context?.req?.headers['x-client-id'] || null
+    return this.itemsService.removeBulk(
+      user.id,
+      user.accessLevel,
+      ids,
+      originClientId,
+    )
   }
 
   // Mutación para Actualización Masiva
@@ -266,8 +282,15 @@ export class ItemsResolver {
     @Args('inputs', { type: () => [BulkUpdateItemInput] })
     inputs: BulkUpdateItemInput[],
     @CurrentUser() user: User,
+    @Context() context?: any,
   ): Promise<Item[]> {
-    return this.itemsService.updateBulk(user.id, user.accessLevel, inputs)
+    const originClientId = context?.req?.headers['x-client-id'] || null
+    return this.itemsService.updateBulk(
+      user.id,
+      user.accessLevel,
+      inputs,
+      originClientId,
+    )
   }
 
   @ResolveField(() => Float)
