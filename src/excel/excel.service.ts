@@ -61,6 +61,11 @@ export class ExcelService {
     productType: string = 'resale', // <--- Recibimos el tipo de producto
   ): Promise<string> {
     const langData = I18N_EXCEL[lang] || I18N_EXCEL['en']
+    console.log('LOG_BACKEND - Idioma recibido:', lang)
+    console.log(
+      'LOG_BACKEND - Datos encontrados en I18N_EXCEL:',
+      I18N_EXCEL[lang] ? 'SÍ' : 'NO (Cayó en fallback)',
+    )
 
     const workbook = new ExcelJS.Workbook()
     const sheet = workbook.addWorksheet(langData.sheetName)
