@@ -390,10 +390,17 @@ export class ItemsResolver {
       'Tipo de planilla:',
       productType,
     )
+    // 🎯 ÚNICO PUNTO DE CORTE: Si llega 'es-ES' o 'es_AR', nos quedamos solo con las primeras 2 letras ('es')
+    const cleanLang = lang ? lang.substring(0, 2).toLowerCase() : 'es'
 
-    const columnConfig = getProductTemplateConfig(productType, lang)
+    console.log('Idioma original:', lang, '| Idioma normalizado:', cleanLang)
+    const columnConfig = getProductTemplateConfig(productType, cleanLang)
 
     // Le pasamos el productType para que el servicio arme bien el nombre
-    return await this.excelService.generate(columnConfig, lang, productType)
+    return await this.excelService.generate(
+      columnConfig,
+      cleanLang,
+      productType,
+    )
   }
 }
