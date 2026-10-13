@@ -171,9 +171,50 @@ export class ExcelParserService {
       col[key] ? row.getCell(col[key]).value : undefined
 
     switch (productType) {
+      // case ProductType.PURCHASED_INGREDIENT: {
+      //   const costPrice = Number(getVal('costPrice') || 0)
+      //   if (isNaN(costPrice)) throw new Error(ItemErrorCode.INVALID_COST_PRICE)
+
+      //   const modeVal = getVal('useMode')
+      //   const isDirect = this.isDirectMode(modeVal)
+
+      //   let baseUnit = BaseUnit.UNIT
+      //   let conversion = 1
+
+      //   if (!isDirect) {
+      //     const unitLabel = getVal('baseUnit') || getVal('useUnit') || ''
+      //     conversion = Number(
+      //       getVal('conversion') || getVal('producedConversion') || 1,
+      //     )
+      //     if (isNaN(conversion) || conversion <= 0)
+      //       throw new Error(ItemErrorCode.INVALID_CONVERSION)
+
+      //     baseUnit = unitLabel
+      //       ? this.findBaseUnitKey(unitLabel.toString())
+      //       : BaseUnit.UNIT
+      //   }
+
+      //   const stock = Number(getVal('initialStock') || 0)
+      //   const sku = getVal('sku')?.toString()?.trim() || undefined
+
+      //   return {
+      //     name,
+      //     productType: ProductType.PURCHASED_INGREDIENT,
+      //     itemType: ItemType.PRODUCT,
+      //     costPrice: costPrice * 100,
+      //     salePrice: 0,
+      //     baseUnit,
+      //     conversionToBaseQty: conversion,
+      //     stock,
+      //     minStockAlert: 0,
+      //     sku,
+      //     isInitialized: stock > 0,
+      //   }
+      // }
+
       case ProductType.PURCHASED_INGREDIENT: {
-        const costPrice = Number(getVal('costPrice') || 0)
-        if (isNaN(costPrice)) throw new Error(ItemErrorCode.INVALID_COST_PRICE)
+        const rawCost = Number(getVal('costPrice') || 0)
+        if (isNaN(rawCost)) throw new Error(ItemErrorCode.INVALID_COST_PRICE)
 
         const modeVal = getVal('useMode')
         const isDirect = this.isDirectMode(modeVal)
@@ -194,21 +235,23 @@ export class ExcelParserService {
             : BaseUnit.UNIT
         }
 
-        const stock = Number(getVal('initialStock') || 0)
+        const rawStock = Number(getVal('initialStock') || 0)
+        const totalStock = rawStock * conversion
+        const unitCost = conversion > 0 ? rawCost / conversion : rawCost
         const sku = getVal('sku')?.toString()?.trim() || undefined
 
         return {
           name,
           productType: ProductType.PURCHASED_INGREDIENT,
           itemType: ItemType.PRODUCT,
-          costPrice: costPrice * 100,
+          costPrice: Math.round(unitCost * 100), // 👈 Costo unitario fraccionado en centavos
           salePrice: 0,
           baseUnit,
           conversionToBaseQty: conversion,
-          stock,
+          stock: totalStock, // 👈 Stock total calculado
           minStockAlert: 0,
           sku,
-          isInitialized: stock > 0,
+          isInitialized: totalStock > 0,
         }
       }
 
@@ -276,13 +319,13 @@ export class ExcelParserService {
       }
 
       case ProductType.RESALE: {
-        const costPrice = Number(getVal('costPrice') || 0)
-        if (isNaN(costPrice)) throw new Error(ItemErrorCode.INVALID_COST_PRICE)
+        const rawCost = Number(getVal('costPrice') || 0)
+        if (isNaN(rawCost)) throw new Error(ItemErrorCode.INVALID_COST_PRICE)
 
-        const salePrice = Number(getVal('salePrice') || 0)
-        if (isNaN(salePrice)) throw new Error(ItemErrorCode.INVALID_SALE_PRICE)
+        const rawSale = Number(getVal('salePrice') || 0)
+        if (isNaN(rawSale)) throw new Error(ItemErrorCode.INVALID_SALE_PRICE)
 
-        const stock = Number(getVal('initialStock') || 0)
+        const rawStock = Number(getVal('initialStock') || 0)
         const minStockAlert = Number(getVal('stockAlert') || 0)
 
         const modeVal = getVal('saleMode')
@@ -302,6 +345,16 @@ export class ExcelParserService {
             : BaseUnit.UNIT
         }
 
+        // 🎯 APLICAMOS LA REGLA DE ORO:
+        // 1. Stock total = Cantidad de envases ingresados * Factor de conversión
+        const totalStock = rawStock * conversion
+
+        // 2. Costo unitario = Costo total de la bolsa / Factor de conversión
+        const unitCost = conversion > 0 ? rawCost / conversion : rawCost
+
+        // 3. El precio de venta ya viene unitario de la planilla
+        const unitSale = rawSale
+
         const sku = getVal('sku')?.toString()?.trim() || undefined
         const barcode = getVal('barcode')?.toString()?.trim() || undefined
 
@@ -309,15 +362,15 @@ export class ExcelParserService {
           name,
           productType: ProductType.RESALE,
           itemType: ItemType.PRODUCT,
-          costPrice: costPrice * 100,
-          salePrice: salePrice * 100,
+          costPrice: Math.round(unitCost * 100), // 👈 Guardado en centavos por unidad
+          salePrice: Math.round(unitSale * 100), // 👈 Guardado en centavos por unidad
           baseUnit,
           conversionToBaseQty: conversion,
-          stock,
+          stock: totalStock, // 👈 Stock total calculado (ej. 60)
           minStockAlert,
           sku,
           barcode,
-          isInitialized: stock > 0,
+          isInitialized: totalStock > 0,
         }
       }
 
