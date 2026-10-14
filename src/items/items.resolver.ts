@@ -391,7 +391,7 @@ export class ItemsResolver {
       productType,
     )
     // 🎯 ÚNICO PUNTO DE CORTE: Si llega 'es-ES' o 'es_AR', nos quedamos solo con las primeras 2 letras ('es')
-    const cleanLang = lang ? lang.substring(0, 2).toLowerCase() : 'es'
+    const cleanLang = lang ? lang.substring(0, 2).toLowerCase() : 'en'
 
     console.log('Idioma original:', lang, '| Idioma normalizado:', cleanLang)
     const columnConfig = getProductTemplateConfig(productType, cleanLang)
