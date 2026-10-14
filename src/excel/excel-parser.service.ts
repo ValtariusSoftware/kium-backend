@@ -224,12 +224,23 @@ export class ExcelParserService {
 
         if (!isDirect) {
           const unitLabel = getVal('baseUnit') || getVal('useUnit') || ''
-          conversion = Number(
-            getVal('conversion') || getVal('producedConversion') || 1,
-          )
+          conversion = Number(getVal('conversion') || 1)
           if (isNaN(conversion) || conversion <= 0)
             throw new Error(ItemErrorCode.INVALID_CONVERSION)
 
+          const selectedUnit = unitLabel
+            ? this.findBaseUnitKey(unitLabel.toString())
+            : BaseUnit.UNIT
+
+          const discreteContainers = [BaseUnit.PACK, BaseUnit.BOX]
+
+          if (discreteContainers.includes(selectedUnit)) {
+            baseUnit = BaseUnit.UNIT
+          } else {
+            baseUnit = selectedUnit
+          }
+        } else {
+          const unitLabel = getVal('baseUnit') || getVal('useUnit') || ''
           baseUnit = unitLabel
             ? this.findBaseUnitKey(unitLabel.toString())
             : BaseUnit.UNIT
@@ -244,11 +255,11 @@ export class ExcelParserService {
           name,
           productType: ProductType.PURCHASED_INGREDIENT,
           itemType: ItemType.PRODUCT,
-          costPrice: Math.round(unitCost * 100), // 👈 Costo unitario fraccionado en centavos
+          costPrice: Math.round(unitCost * 100),
           salePrice: 0,
           baseUnit,
           conversionToBaseQty: conversion,
-          stock: totalStock, // 👈 Stock total calculado
+          stock: totalStock,
           minStockAlert: 0,
           sku,
           isInitialized: totalStock > 0,
@@ -340,19 +351,26 @@ export class ExcelParserService {
           if (isNaN(conversion) || conversion <= 0)
             throw new Error(ItemErrorCode.INVALID_CONVERSION)
 
+          const selectedUnit = unitLabel
+            ? this.findBaseUnitKey(unitLabel.toString())
+            : BaseUnit.UNIT
+
+          const discreteContainers = [BaseUnit.PACK, BaseUnit.BOX]
+
+          if (discreteContainers.includes(selectedUnit)) {
+            baseUnit = BaseUnit.UNIT
+          } else {
+            baseUnit = selectedUnit
+          }
+        } else {
+          const unitLabel = getVal('baseUnit') || ''
           baseUnit = unitLabel
             ? this.findBaseUnitKey(unitLabel.toString())
             : BaseUnit.UNIT
         }
 
-        // 🎯 APLICAMOS LA REGLA DE ORO:
-        // 1. Stock total = Cantidad de envases ingresados * Factor de conversión
         const totalStock = rawStock * conversion
-
-        // 2. Costo unitario = Costo total de la bolsa / Factor de conversión
         const unitCost = conversion > 0 ? rawCost / conversion : rawCost
-
-        // 3. El precio de venta ya viene unitario de la planilla
         const unitSale = rawSale
 
         const sku = getVal('sku')?.toString()?.trim() || undefined
@@ -362,11 +380,11 @@ export class ExcelParserService {
           name,
           productType: ProductType.RESALE,
           itemType: ItemType.PRODUCT,
-          costPrice: Math.round(unitCost * 100), // 👈 Guardado en centavos por unidad
-          salePrice: Math.round(unitSale * 100), // 👈 Guardado en centavos por unidad
+          costPrice: Math.round(unitCost * 100),
+          salePrice: Math.round(unitSale * 100),
           baseUnit,
           conversionToBaseQty: conversion,
-          stock: totalStock, // 👈 Stock total calculado (ej. 60)
+          stock: totalStock,
           minStockAlert,
           sku,
           barcode,
