@@ -8,40 +8,136 @@ import { SubscriptionFeatureTranslation } from './entities/subscription-feature-
 import { SubscriptionFeatureSlug } from './enums/subscription-feature-slug.enum'
 import { NotificationCampaignSlug } from 'src/notifications/enums/notification-campaign-slug.enum'
 import { UserCampaignTracker } from 'src/notifications/entities/user-campaign-tracker.entity'
-import { AccessLevel } from 'src/users/entities/user.entity'
+import { PlanFeature } from './entities/plan-feature.entity'
+import {
+  FREE_INFORMATIVE_FEATURES,
+  SUBSCRIPTION_PLANS_METADATA,
+} from './constants/free-informative.constants'
 
 @Injectable()
 export class SubscriptionsService {
   constructor(
     @InjectRepository(SubscriptionFeature)
     private readonly featureRepository: Repository<SubscriptionFeature>,
-
+    @InjectRepository(PlanFeature)
+    private readonly planFeatureRepository: Repository<PlanFeature>,
     @InjectRepository(UserCampaignTracker)
     private readonly trackerRepository: Repository<UserCampaignTracker>,
   ) {}
+  async getSubscriptionMatrix(
+    lang?: string,
+    clientPlatform: 'android' | 'web' = 'android',
+  ) {
+    const targetLang = lang && FREE_INFORMATIVE_FEATURES[lang] ? lang : 'es'
 
-  async findAll() {
-    // Traemos TODAS las features activas con TODAS sus traducciones
-    const features = await this.featureRepository.find({
-      where: { isActive: true },
-      relations: ['translations'],
-      order: { displayOrder: 'ASC' },
+    // 1. Traemos las características de la base de datos para todos los planes
+    const planFeatures = await this.planFeatureRepository.find({
+      relations: ['feature', 'feature.translations'],
+      where: {
+        feature: { isActive: true },
+      },
+      order: {
+        planId: 'ASC',
+        feature: { displayOrder: 'ASC' },
+      },
     })
 
-    // Opcional: Validación de integridad en el servidor
-    // Si querés que el backend grite si falta el inglés (tu fallback original)
-    features.forEach((feature) => {
-      const hasEnglish = feature.translations.some(
-        (t) => t.languageCode === 'en',
-      )
-      if (!hasEnglish) {
-        console.warn(
-          `⚠️ Feature ${feature.slug} no tiene traducción al inglés. Esto romperá el fallback en la App.`,
-        )
+    // Agrupamos las features de la BD por planId
+    const featuresByPlan = new Map<string, any[]>()
+    for (const pf of planFeatures) {
+      const planId = pf.planId
+      if (!featuresByPlan.has(planId)) {
+        featuresByPlan.set(planId, [])
       }
-    })
 
-    return features
+      let translations = pf.feature.translations
+      if (targetLang) {
+        translations = translations.filter((t) => t.languageCode === targetLang)
+      }
+
+      // 🎯 Extracción directa y limpia del objeto limits que ya confirmó la consola
+      const limitValue =
+        pf.limits && typeof pf.limits === 'object'
+          ? ((pf.limits as any).max ?? null)
+          : null
+
+      featuresByPlan.get(planId)!.push({
+        featureSlug: pf.feature.slug,
+        isEnabled: pf.isEnabled,
+        limitMax: limitValue, // 👈 Aquí se inyecta directo el 100 o 3000
+        displayOrder: pf.feature.displayOrder,
+        translations,
+      })
+    }
+
+    const plansMatrix: any[] = []
+
+    // 2. Iteramos sobre las keys de la lista blanca oficial (PRO_PLUS, PRO, FREE)
+    for (const planId of Object.keys(SUBSCRIPTION_PLANS_METADATA)) {
+      const metadata = SUBSCRIPTION_PLANS_METADATA[planId]
+
+      const resolvedOrder =
+        clientPlatform === 'web'
+          ? metadata.displayOrderWeb
+          : metadata.displayOrderAndroid
+
+      const planName =
+        metadata.name[targetLang] || metadata.name['es'] || planId
+      const planDescription =
+        metadata.description[targetLang] || metadata.description['es'] || ''
+      const planPeriod =
+        metadata.periodSuffix[targetLang] ||
+        metadata.periodSuffix['es'] ||
+        '/mes'
+
+      let planFeatureList = featuresByPlan.get(planId) || []
+
+      // 🚀 SI ES EL PLAN FREE: Inyectamos las viñetas informativas manteniendo las de la BD (con su stock_limit de 100)
+      if (planId === 'FREE') {
+        const informativeTexts =
+          FREE_INFORMATIVE_FEATURES[targetLang] ||
+          FREE_INFORMATIVE_FEATURES['es']
+
+        const informativeFeaturesAsItems = informativeTexts.map(
+          (text, index) => ({
+            featureSlug: `free_info_${index}`,
+            isEnabled: true,
+            limitMax: null,
+            displayOrder: index - 10,
+            translations: [
+              {
+                languageCode: targetLang,
+                name: text,
+              },
+            ],
+          }),
+        )
+
+        // Combinamos las viñetas informativas + las features reales de la BD (donde viaja el stock_limit con su 100)
+        planFeatureList = [...planFeatureList, ...informativeFeaturesAsItems]
+      }
+
+      plansMatrix.push({
+        id: planId,
+        productId: metadata.productId,
+        name: planName,
+        description: planDescription,
+        priceDisplay: metadata.priceDisplay,
+        periodSuffix: planPeriod,
+        displayOrder: resolvedOrder,
+        features: planFeatureList,
+      })
+    }
+
+    // 3. Ordenamos según el displayOrder correspondiente
+    const sortedPlans = plansMatrix.sort(
+      (a, b) => a.displayOrder - b.displayOrder,
+    )
+
+    return {
+      plansMatrix: sortedPlans,
+      freeInformativeFeatures: FREE_INFORMATIVE_FEATURES[targetLang] || [],
+    }
   }
 
   async getLatestUpdate(): Promise<Date> {
@@ -67,30 +163,6 @@ export class SubscriptionsService {
       .where('feature.isActive = :active', { active: true })
       .orderBy('feature.displayOrder', 'ASC')
       .getMany()
-  }
-
-  private readonly FALLBACK_LIMITS: Record<string, Record<string, number>> = {
-    [SubscriptionFeatureSlug.STOCK_LIMIT]: { FREE: 25, PRO: 1200 },
-    [SubscriptionFeatureSlug.MULTI_PRODUCT_UPDATE]: { FREE: 0, PRO: 100 },
-    [SubscriptionFeatureSlug.MULTI_PRODUCT_DELETION]: { FREE: 0, PRO: 100 },
-    [SubscriptionFeatureSlug.BULK_UPLOAD]: { FREE: 10, PRO: 100 }, // El que usaste como string
-  }
-
-  async getLimit(slug: string, accessLevel: AccessLevel): Promise<number> {
-    try {
-      const feature = await this.featureRepository.findOne({
-        where: { slug, isActive: true },
-      })
-      if (feature && feature.limits) {
-        return (
-          feature.limits[accessLevel] ?? this.FALLBACK_LIMITS[slug][accessLevel]
-        )
-      }
-      return this.FALLBACK_LIMITS[slug][accessLevel]
-    } catch (error) {
-      console.log(error)
-      return this.FALLBACK_LIMITS[slug][accessLevel]
-    }
   }
 
   async createMany(

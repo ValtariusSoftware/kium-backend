@@ -8,10 +8,8 @@ import {
 import { ProductType } from './enums/product-type'
 import { ItemErrorCode } from './enums/item-error-code.enum'
 import { CreateItemInput } from './dto/create-item.dto'
-import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
-import { AccessLevel } from 'src/users/entities/user.entity'
-import { SubscriptionFeatureSlug } from 'src/subscriptions/enums/subscription-feature-slug.enum'
 import { Item, ItemType } from './entities/item.entity'
+import { EntitlementsService } from 'src/subscriptions/entitlements.service'
 
 interface DatabaseError extends Error {
   code?: string
@@ -21,8 +19,8 @@ interface DatabaseError extends Error {
 @Injectable()
 export class ItemsDomainService {
   constructor(
-    @Inject(forwardRef(() => SubscriptionsService)) // <-- Si te da error, añade esto
-    private readonly subscriptionsService: SubscriptionsService,
+    @Inject(forwardRef(() => EntitlementsService)) // <-- Si te da error, añade esto
+    private readonly entitlementsService: EntitlementsService,
   ) {}
 
   /**
@@ -181,21 +179,6 @@ export class ItemsDomainService {
 
       default:
         throw new BadRequestException(ItemErrorCode.INTERNAL_ERROR)
-    }
-  }
-
-  // Consulta al servicio de suscripciones cuánto es el máximo de ítems que el usuario puede subir en una sola solicitud (el "lote")
-  async validateBulkCapacity(
-    userId: string,
-    accessLevel: AccessLevel,
-    itemsCount: number,
-  ): Promise<void> {
-    const batchLimit = await this.subscriptionsService.getLimit(
-      SubscriptionFeatureSlug.BULK_UPLOAD,
-      accessLevel,
-    )
-    if (itemsCount > batchLimit) {
-      throw new Error(ItemErrorCode.BATCH_LIMIT_EXCEEDED)
     }
   }
 

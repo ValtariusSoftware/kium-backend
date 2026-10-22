@@ -10,7 +10,7 @@ export default () => ({
   },
   corsOrigin:
     process.env.CORS_ORIGIN ||
-    'http://localhost:5173,http://localhost:3000,http://192.168.100.66:5173',
+    'http://localhost:5173,http://localhost:3000,http://192.168.100.66:5173,http://localhost:4321',
   graphqlSchema: process.env.GRAPHQL_SCHEMA,
   nextAuthSecret: process.env.NEXTAUTH_SECRET,
   firebase: {
