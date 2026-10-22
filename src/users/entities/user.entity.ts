@@ -30,8 +30,10 @@ registerEnumType(SubscriptionStatus, {
 
 // 2. Enum para el nivel de acceso (Solo FREE y planes futuros)
 export enum AccessLevel {
+  DEMO = 'DEMO',
   FREE = 'FREE',
   PRO = 'PRO',
+  PRO_PLUS = 'PRO_PLUS',
 }
 
 // 💡 REGISTRAR ENUM 2
@@ -135,6 +137,14 @@ export class User {
   @UpdateDateColumn({ type: 'timestamp', name: 'updated_at' })
   @Field()
   updatedAt: Date // Nombre de la propiedad en TypeScript (camelCase)
+
+  @Column({
+    name: 'trial_ends_at',
+    type: 'timestamp',
+    nullable: true,
+  })
+  @Field({ nullable: true })
+  trialEndsAt?: Date
 
   // 💡 AÑADIR ESTA RELACIÓN ONE-TO-MANY
   // Un Usuario puede tener muchos Items

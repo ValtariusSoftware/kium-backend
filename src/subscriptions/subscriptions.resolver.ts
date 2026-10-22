@@ -5,16 +5,27 @@ import { User } from '../users/entities/user.entity'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
 import { CreateSubscriptionFeatureInput } from './dto/create-subscription-feature.input'
 import { UpdateSubscriptionFeatureInput } from './dto/update-subscription-feature.input'
+import { SubscriptionMatrixResponseDto } from './dto/subscription-matrix.response'
+import { Public } from 'src/common/decorators/public.decorator'
 
 @Resolver(() => SubscriptionFeature)
 export class SubscriptionsResolver {
   constructor(private readonly subscriptionsService: SubscriptionsService) {}
 
-  @Query(() => [SubscriptionFeature], { name: 'subscriptionManifest' })
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async getSubscriptionManifest(@CurrentUser() user: User) {
-    // Ahora traemos todo el paquete completo de idiomas
-    return this.subscriptionsService.findAll()
+  // Query unificada para traer la matriz completa de características y límites agrupados por plan
+  @Public()
+  @Query(() => SubscriptionMatrixResponseDto, {
+    name: 'subscriptionPlansMatrix',
+  })
+  async getSubscriptionPlansMatrix(
+    @Args('lang', { type: () => String, nullable: true }) lang?: string,
+    @Args('clientPlatform', { type: () => String, nullable: true })
+    clientPlatform?: 'android' | 'web',
+  ) {
+    return this.subscriptionsService.getSubscriptionMatrix(
+      lang,
+      clientPlatform || 'android',
+    )
   }
 
   @Query(() => Date, { name: 'subscriptionLastUpdate' })

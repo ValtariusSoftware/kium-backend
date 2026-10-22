@@ -32,8 +32,11 @@ import { GraphQLUpload, FileUpload } from 'graphql-upload-ts'
 import { getProductTemplateConfig } from 'src/excel/excel.template.config'
 import { ExcelService } from 'src/excel/excel.service'
 // import { EXCEL_HEADERS } from 'src/common/i18n/excel-headers'
-import { Headers } from '@nestjs/common'
+import { Headers, UseGuards } from '@nestjs/common'
 import { ProductMetricsType } from './types/product-metrics.type'
+import { SubscriptionFeatureSlug } from 'src/subscriptions/enums/subscription-feature-slug.enum'
+import { RequireFeature } from 'src/common/decorators/require-feature.decorator'
+import { FeatureEntitlementGuard } from 'src/subscriptions/guards/feature-entitlement.guard'
 
 @Resolver(() => Item)
 export class ItemsResolver {
@@ -177,6 +180,8 @@ export class ItemsResolver {
   }*/
 
   @Mutation(() => BulkItemResponse)
+  @UseGuards(FeatureEntitlementGuard) // 🛡️ Protegido por el Guard
+  @RequireFeature(SubscriptionFeatureSlug.BULK_UPLOAD)
   async upsertBulkProducts(
     @Args({ name: 'file', type: () => GraphQLUpload }) file: FileUpload,
     @CurrentUser() user: User,
@@ -262,22 +267,21 @@ export class ItemsResolver {
 
   // Mutación para Borrado Masivo
   @Mutation(() => Boolean, { name: 'removeItemsBulk' })
+  @UseGuards(FeatureEntitlementGuard) // 🛡️ El Guard intercepta y valida contra la DB
+  @RequireFeature(SubscriptionFeatureSlug.MULTI_PRODUCT_DELETION) // 🚀 Usando el Enum
   async removeItemsBulk(
     @Args('ids', { type: () => [ID] }) ids: string[],
     @CurrentUser() user: User,
     @Context() context?: any,
   ): Promise<boolean> {
     const originClientId = context?.req?.headers['x-client-id'] || null
-    return this.itemsService.removeBulk(
-      user.id,
-      user.accessLevel,
-      ids,
-      originClientId,
-    )
+    return this.itemsService.removeBulk(user.id, ids, originClientId)
   }
 
   // Mutación para Actualización Masiva
   @Mutation(() => [Item], { name: 'updateItemsBulk' })
+  @UseGuards(FeatureEntitlementGuard) // 🛡️ El Guard protege el acceso masivo según la DB
+  @RequireFeature(SubscriptionFeatureSlug.MULTI_PRODUCT_UPDATE)
   async updateItemsBulk(
     @Args('inputs', { type: () => [BulkUpdateItemInput] })
     inputs: BulkUpdateItemInput[],
@@ -285,12 +289,7 @@ export class ItemsResolver {
     @Context() context?: any,
   ): Promise<Item[]> {
     const originClientId = context?.req?.headers['x-client-id'] || null
-    return this.itemsService.updateBulk(
-      user.id,
-      user.accessLevel,
-      inputs,
-      originClientId,
-    )
+    return this.itemsService.updateBulk(user.id, inputs, originClientId)
   }
 
   @ResolveField(() => Float)

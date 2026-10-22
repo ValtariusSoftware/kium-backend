@@ -6,8 +6,8 @@ import {
   OneToMany,
 } from 'typeorm'
 import { ObjectType, Field, ID } from '@nestjs/graphql'
-import { GraphQLJSON } from 'graphql-scalars'
 import { SubscriptionFeatureTranslation } from './subscription-feature-translation.entity'
+import { PlanFeature } from './plan-feature.entity'
 
 @Entity({ name: 'subscription_features', schema: 'stock_control' })
 @ObjectType()
@@ -20,14 +20,6 @@ export class SubscriptionFeature {
   @Field()
   slug: string
 
-  @Column({ name: 'is_free', type: 'boolean', default: false })
-  @Field(() => Boolean)
-  isFree: boolean
-
-  @Column({ name: 'is_pro', type: 'boolean', default: true })
-  @Field(() => Boolean)
-  isPro: boolean
-
   @Column({ name: 'is_active', type: 'boolean', default: true }) // 👈 Nuevo
   @Field(() => Boolean)
   isActive: boolean
@@ -35,10 +27,6 @@ export class SubscriptionFeature {
   @Column({ name: 'is_highlighted', type: 'boolean', default: false }) // 👈 Nuevo
   @Field(() => Boolean)
   isHighlighted: boolean
-
-  @Column({ name: 'limits', type: 'jsonb', nullable: true })
-  @Field(() => GraphQLJSON, { nullable: true }) // 👈 CAMBIAR String POR GraphQLJSON
-  limits?: any
 
   @Column({ name: 'display_order', type: 'int', default: 0 })
   @Field()
@@ -53,4 +41,8 @@ export class SubscriptionFeature {
   })
   @Field(() => [SubscriptionFeatureTranslation])
   translations: SubscriptionFeatureTranslation[]
+
+  // 💎 NUEVA RELACIÓN: Una feature puede estar en muchos plan_features
+  @OneToMany(() => PlanFeature, (pf) => pf.feature)
+  planFeatures: PlanFeature[]
 }

@@ -32,7 +32,6 @@ import { PaginationInput } from 'src/common/dto/pagination.input'
 import { ItemErrorCode } from './enums/item-error-code.enum'
 import { RecipeIngredient } from 'src/recipes/entities/recipe-ingredient.entity'
 import { Recipe } from 'src/recipes/entities/recipe.entity'
-import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
 import { SubscriptionFeatureSlug } from 'src/subscriptions/enums/subscription-feature-slug.enum'
 import { nanoid } from 'nanoid'
 import { ItemsDomainService } from './items-domain.service'
@@ -40,6 +39,7 @@ import { ItemsDomainService } from './items-domain.service'
 import { SyncGateway } from 'src/sync/sync.gateway'
 import { EntityType } from 'src/common/constants/entities.constant'
 import { SyncService } from 'src/sync/sync.service'
+import { EntitlementsService } from 'src/subscriptions/entitlements.service'
 
 @Injectable()
 export class ItemsService {
@@ -59,8 +59,8 @@ export class ItemsService {
     private readonly recipesService: RecipesService,
     @Inject(forwardRef(() => InventoryTransactionsService))
     private readonly inventoryTransactionsService: InventoryTransactionsService,
-    @Inject(forwardRef(() => SubscriptionsService)) // Usar forwardRef si hay circularidad
-    private readonly subscriptionsService: SubscriptionsService,
+    @Inject(forwardRef(() => EntitlementsService))
+    private readonly entitlementsService: EntitlementsService,
     private readonly itemsDomainService: ItemsDomainService,
     private readonly syncGateway: SyncGateway,
     private readonly syncService: SyncService,
@@ -87,9 +87,10 @@ export class ItemsService {
     try {
       // 1. Validar Límite de suscripción
       // 1. OBTENER LÍMITE DINÁMICO
-      const limit = await this.subscriptionsService.getLimit(
-        SubscriptionFeatureSlug.STOCK_LIMIT,
+      // 1. OBTENER LÍMITE DINÁMICO CON EL NUEVO SERVICIO
+      const limit = await this.entitlementsService.getLimit(
         accessLevel,
+        SubscriptionFeatureSlug.STOCK_LIMIT,
       )
 
       this.itemsDomainService.validateItemIntegrity(createItemInput)
@@ -478,21 +479,10 @@ export class ItemsService {
     inputs: CreateItemInput[],
     originClientId?: string,
   ): Promise<BulkItemResponse> {
-    // 1. Validar límite de batch usando función privada
-    try {
-      await this.itemsDomainService.validateBulkCapacity(
-        userId,
-        accessLevel,
-        inputs.length,
-      )
-    } catch (err: any) {
-      throw new ForbiddenException(err.message) // O el manejo que prefieras para el error global
-    }
-
-    // 2. VALIDAR CAPACIDAD TOTAL
-    const capacityLimit = await this.subscriptionsService.getLimit(
-      SubscriptionFeatureSlug.STOCK_LIMIT,
+    // 2. VALIDAR CAPACIDAD TOTAL CON EL NUEVO ENTITLEMENTS SERVICE
+    const capacityLimit = await this.entitlementsService.getLimit(
       accessLevel,
+      SubscriptionFeatureSlug.STOCK_LIMIT,
     )
     const currentCount = await this.itemsRepository.count({ where: { userId } })
 
@@ -637,20 +627,6 @@ export class ItemsService {
     inputs: BulkUpdateItemInput[],
     originClientId?: string,
   ): Promise<BulkItemResponse> {
-    // 1. Validar límite de batch usando método encapsulado
-    try {
-      await this.itemsDomainService.validateBulkCapacity(
-        userId,
-        accessLevel,
-        inputs.length,
-      )
-    } catch (err: any) {
-      return {
-        created: [],
-        errors: [{ row: 0, name: 'Batch', error: err.message }],
-      }
-    }
-
     const queryRunner = this.dataSource.createQueryRunner()
     await queryRunner.connect()
 
@@ -829,29 +805,9 @@ export class ItemsService {
    */
   async removeBulk(
     userId: string,
-    accessLevel: AccessLevel,
     ids: string[],
     originClientId?: string,
   ): Promise<boolean> {
-    // 1. Obtener límite de lote (Batch) desde la DB
-    // Usamos el slug 'bulk_batch_limit' o uno específico como 'bulk_delete_limit'
-    const batchLimit = await this.subscriptionsService.getLimit(
-      SubscriptionFeatureSlug.MULTI_PRODUCT_DELETION,
-      accessLevel,
-    )
-
-    // 2. Si el límite es 0, significa que la feature está bloqueada para su nivel
-    if (batchLimit <= 0) {
-      throw new ForbiddenException(ItemErrorCode.PRO_FEATURE_ONLY)
-    }
-
-    // 3. Validación de tamaño del lote solicitado
-    if (ids.length > batchLimit) {
-      throw new ForbiddenException(
-        `No puedes eliminar más de ${batchLimit} ítems a la vez.`,
-      )
-    }
-
     // 3. VALIDACIÓN PREVIA (Atómica e Informativa)
     const itemsInRecipes: string[] = []
 
@@ -928,23 +884,9 @@ export class ItemsService {
    */
   async updateBulk(
     userId: string,
-    accessLevel: AccessLevel,
     inputs: BulkUpdateItemInput[],
     originClientId?: string,
   ): Promise<Item[]> {
-    const batchLimit = await this.subscriptionsService.getLimit(
-      SubscriptionFeatureSlug.MULTI_PRODUCT_UPDATE,
-      accessLevel,
-    )
-
-    if (batchLimit <= 0) {
-      throw new ForbiddenException(ItemErrorCode.PRO_FEATURE_ONLY)
-    }
-
-    if (inputs.length > batchLimit) {
-      throw new ForbiddenException(ItemErrorCode.BULK_LIMIT_EXCEEDED)
-    }
-
     const queryRunner = this.dataSource.createQueryRunner()
     await queryRunner.connect()
 

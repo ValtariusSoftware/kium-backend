@@ -17,12 +17,14 @@ import { AccessLevel, SubscriptionStatus, User } from './entities/user.entity'
 import { UserErrorCode } from './enums/user-error-code.enum'
 import * as admin from 'firebase-admin'
 import { Item } from 'src/items/entities/item.entity'
-import { SubscriptionsService } from 'src/subscriptions/subscriptions.service'
 import { SyncEventEntity } from 'src/sync/entities/sync-event.entity'
 import { Sale } from 'src/sales/entities/sale.entity'
 import { SyncGateway } from 'src/sync/sync.gateway'
 import { SyncService } from 'src/sync/sync.service'
 import { EntityType } from 'src/common/constants/entities.constant'
+import { CatalogPolicyService } from 'src/subscriptions/catalog-policy.service'
+import { TRIAL_DURATION_DAYS } from 'src/common/constants/subscriptions.constant'
+import { EntitlementsService } from 'src/subscriptions/entitlements.service'
 // 🚨 Definimos una interfaz para el payload del token decodificado de Firebase
 // Usamos solo los campos necesarios
 interface FormattedCurrency {
@@ -46,10 +48,12 @@ export class UsersService {
     private usersRepository: Repository<User>,
     @InjectRepository(Item)
     private itemsRepository: Repository<Item>,
-    @Inject(forwardRef(() => SubscriptionsService))
-    private readonly subscriptionsService: SubscriptionsService,
+    @Inject(forwardRef(() => CatalogPolicyService))
+    private readonly catalogPolicyService: CatalogPolicyService,
     @InjectRepository(SyncEventEntity)
     private syncEventsRepository: Repository<SyncEventEntity>,
+    @Inject(forwardRef(() => EntitlementsService))
+    private readonly entitlementsService: EntitlementsService,
     @Inject('FIREBASE_ADMIN') private readonly firebaseApp: admin.app.App,
     @InjectRepository(Sale)
     private readonly salesRepository: Repository<Sale>,
@@ -66,6 +70,12 @@ export class UsersService {
   async findOneById(id: string): Promise<User | null> {
     const user = await this.usersRepository.findOne({ where: { id } })
     if (!user) return null
+
+    // 🕒 2. GATILLO AUTOMÁTICO AL INICIO:
+    // Apenas se busca el usuario (ej: cuando la app abre y hace la MeQuery),
+    // evaluamos si su DEMO expiró. Si expiró, esto actualizará su nivel a FREE
+    // en la BD y disparará el bloqueo de stock automáticamente.
+    await this.entitlementsService.resolveEffectiveLevel(user)
 
     // 1. Extraemos el código de moneda (ya sea que esté guardado como string o como objeto)
     const currencyCode =
@@ -118,13 +128,17 @@ export class UsersService {
     // 3. Si el usuario NO existe, se crea uno nuevo
     this.logger.log(`Creando nuevo usuario: ID=${user_id}, Email=${email}`)
 
+    const trialDate = new Date()
+    trialDate.setDate(trialDate.getDate() + TRIAL_DURATION_DAYS)
+
     user = this.usersRepository.create({
       id: user_id, // Usamos el UID de Firebase como Primary Key
       email: email,
       username: name, // Usamos el nombre como username por defecto
       // Valores por defecto (FREE, NON_SUBSCRIBED) se aplican automáticamente por la entidad.
       subscriptionStatus: SubscriptionStatus.NON_SUBSCRIBED,
-      accessLevel: AccessLevel.FREE,
+      accessLevel: AccessLevel.DEMO, // 👈 Arrancan en DEMO (PRO+ por 15 días)
+      trialEndsAt: trialDate, // 👈 Seteamos el vencimiento del trial
       onboardingCompleted: false,
     })
 
@@ -156,48 +170,44 @@ export class UsersService {
 
     user.accessLevel = level
 
-    if (level === AccessLevel.PRO) {
+    if (level === AccessLevel.PRO || level === AccessLevel.PRO_PLUS) {
       user.subscriptionStatus = SubscriptionStatus.ACTIVE
       if (!user.subscriptionStartDate) {
         user.subscriptionStartDate = new Date()
       }
-
-      // 🔓 Si pasa a PRO, destrabamos todos sus ítems de golpe
-      await this.itemsRepository.update({ userId }, { isLockedByPlan: false })
+    } else if (level === AccessLevel.DEMO) {
+      // El DEMO usa access_level = DEMO y se apoya en trial_ends_at.
+      // No es una suscripción activa paga, por lo que subscription_status no cambia a ACTIVE.
+      if (!user.trialEndsAt) {
+        const trialDate = new Date()
+        trialDate.setDate(trialDate.getDate() + TRIAL_DURATION_DAYS)
+        user.trialEndsAt = trialDate
+      }
     } else {
       user.subscriptionStatus = SubscriptionStatus.NON_SUBSCRIBED
       user.subscriptionStartDate = undefined
-
-      // 🔍 1. Buscamos dinámicamente el límite permitido para FREE (ej: 100) desde la tabla subscription_features
-      const freeLimit = await this.subscriptionsService.getLimit(
-        'stock_limit',
-        AccessLevel.FREE,
-      )
-      // const freeLimit = 4
-      // 📦 2. Traemos todos los ítems activos del usuario ordenados por fecha de creación (los más viejos primero)
-      const items = await this.itemsRepository.find({
-        where: { userId },
-        order: { createdAt: 'ASC' },
-      })
-
-      // 🔒 3. Si supera el límite gratuito, bloqueamos los excedentes (los más nuevos)
-      if (items.length > freeLimit) {
-        const itemsToLock = items.slice(freeLimit)
-        const lockIds = itemsToLock.map((item) => item.id)
-
-        await this.itemsRepository
-          .createQueryBuilder()
-          .update()
-          .set({ isLockedByPlan: true })
-          .where('id IN (:...ids)', { ids: lockIds })
-          .execute()
-      } else {
-        // Si está por debajo del límite, aseguramos que ninguno quede bloqueado por error
-        await this.itemsRepository.update({ userId }, { isLockedByPlan: false })
-      }
     }
 
+    // Delegamos la política de catálogo (DEMO destraba igual que PRO/PRO_PLUS)
+    await this.catalogPolicyService.applyPolicyOnAccessChange(user, level)
+
     return this.usersRepository.save(user)
+  }
+
+  /**
+   * 🕒 Calcula los días restantes del trial de forma centralizada
+   */
+  calculateTrialDaysRemaining(user: User): number | null {
+    if (!user.trialEndsAt) {
+      return null
+    }
+
+    const now = new Date().getTime()
+    const endsAt = new Date(user.trialEndsAt).getTime()
+    const diffTime = endsAt - now
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+
+    return diffDays > 0 ? diffDays : 0
   }
 
   // async updateFcmToken(userId: string, token: string): Promise<boolean> {

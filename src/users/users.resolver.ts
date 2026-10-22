@@ -1,4 +1,13 @@
-import { Resolver, Query, Mutation, Args, Context } from '@nestjs/graphql'
+import {
+  Resolver,
+  Query,
+  Mutation,
+  Args,
+  Context,
+  ResolveField,
+  Parent,
+  Int,
+} from '@nestjs/graphql'
 import { User } from './entities/user.entity'
 import { UsersService } from './users.service'
 import { CurrentUser } from 'src/common/decorators/current-user.decorator'
@@ -8,6 +17,12 @@ import { TesterActivityReportType } from './dto/tester-activity-report.type'
 @Resolver(() => User)
 export class UsersResolver {
   constructor(private usersService: UsersService) {}
+
+  // 🚀 El ResolveField usa el servicio para mantener el Resolver limpio
+  @ResolveField(() => Int, { nullable: true })
+  trialDaysRemaining(@Parent() user: User): number | null {
+    return this.usersService.calculateTrialDaysRemaining(user)
+  }
 
   @Query(() => User, { name: 'me', nullable: true })
   async me(
