@@ -83,7 +83,7 @@ export class UsersService {
         ? user.currency
         : (user.currency as any)?.code || 'USD'
 
-    // 2. Buscamos los datos completos de la moneda usando tu función existente
+    // 2. Buscamos los datos completos de la moneda usando tu función existente.
     const currencyResults = await this.searchCurrencies(
       user,
       currencyCode,
