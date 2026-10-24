@@ -377,7 +377,7 @@ export class NotificationsService {
         // 4. Tu query del Dashboard para validar si califica (si vendió algo)
         const summary = await this.dashboardService.getHomeSummary(
           user.id,
-          user.accessLevel,
+          // user.accessLevel,
         )
 
         if (

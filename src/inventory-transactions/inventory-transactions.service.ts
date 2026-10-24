@@ -257,6 +257,11 @@ export class InventoryTransactionsService {
           .orderBy('label', 'ASC')
           .getRawMany()
 
+    /*// 🔍 LOG 1: Ver qué devuelve exactamente la base de datos antes de paginar
+    console.log(
+      '--- [DEBUG 1] Raw Results de DB:',
+      JSON.stringify(results, null, 2),
+    )*/
     if (results.length === 0) {
       return {
         data: [],
@@ -275,7 +280,11 @@ export class InventoryTransactionsService {
     const endIndex = totalResults - page * windowSize
 
     const pageData = results.slice(startIndex, endIndex)
-
+    /*// 🔍 LOG 2: Ver qué recorta la paginación para esta página
+    console.log(
+      '--- [DEBUG 2] Page Data recortado:',
+      JSON.stringify(pageData, null, 2),
+    )*/
     // 3. Mapeo de datos (Ajustado para aceptar números o strings)
     const realDataPoints: FinancialDataPoint[] = pageData.map((r) => {
       // Convertimos a string primero para que .split('.') siempre funcione
@@ -299,15 +308,35 @@ export class InventoryTransactionsService {
     // 4. Construcción del array cronológico [Viejo -> Nuevo]
     const data: FinancialDataPoint[] = []
 
+    // if (realDataPoints.length > 0 && realDataPoints.length < windowSize) {
+    //   const missingCount = windowSize - realDataPoints.length
+    //   const referenceDate = new Date(realDataPoints[0].label + '-01')
+
+    //   for (let i = missingCount; i > 0; i--) {
+    //     const prevDate = new Date(referenceDate)
+    //     prevDate.setMonth(prevDate.getMonth() - i)
+    //     data.push({
+    //       label: prevDate.toISOString().slice(0, 7),
+    //       revenue: 0,
+    //       cost: 0,
+    //       losses: 0,
+    //       netProfit: 0,
+    //     })
+    //   }
+    // }
+
     if (realDataPoints.length > 0 && realDataPoints.length < windowSize) {
       const missingCount = windowSize - realDataPoints.length
-      const referenceDate = new Date(realDataPoints[0].label + '-01')
+      // 👈 Declaramos las variables usando el primer elemento real con seguridad
+      const [refYear, refMonth] = realDataPoints[0].label.split('-').map(Number)
 
       for (let i = missingCount; i > 0; i--) {
-        const prevDate = new Date(referenceDate)
-        prevDate.setMonth(prevDate.getMonth() - i)
+        // Creamos la fecha mes a mes hacia atrás usando índices locales exactos
+        const d = new Date(refYear, refMonth - 1 - i, 1)
+        const label = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+
         data.push({
-          label: prevDate.toISOString().slice(0, 7),
+          label,
           revenue: 0,
           cost: 0,
           losses: 0,
@@ -318,6 +347,11 @@ export class InventoryTransactionsService {
 
     // B. Agregar los datos reales
     data.push(...realDataPoints)
+    /*// 🔍 LOG 3: Ver el array final de datos que se le envía al frontend
+    console.log(
+      '--- [DEBUG 3] Array final data para el Front:',
+      JSON.stringify(data, null, 2),
+    )*/
 
     // 5. Cálculo de promedio (basado solo en meses con actividad real en el set actual)
     const totalNetBig = realDataPoints.reduce(

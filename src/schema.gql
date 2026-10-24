@@ -266,8 +266,16 @@ type PaginatedSales {
   total: Int!
 }
 
+type DetailedProductItem {
+  id: ID!
+  name: String!
+  stock: Float!
+  baseUnit: String!
+  quantitySold: Float!
+}
+
 type PaginatedTopProducts {
-  items: [TopProduct!]!
+  items: [DetailedProductItem!]!
   total: Int!
 }
 
