@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable } from '@nestjs/common'
+import { Injectable } from '@nestjs/common'
 import { InjectRepository } from '@nestjs/typeorm'
 import { Repository, Between } from 'typeorm'
 import { Sale } from '../sales/entities/sale.entity'
@@ -6,14 +6,13 @@ import { InventoryTransaction } from '../inventory-transactions/entities/invento
 import { Item } from '../items/entities/item.entity'
 import { TransactionType } from '../inventory-transactions/enums/transaction-type.enum'
 import { DashboardSummary, TopProduct } from './dto/dashboard-summary.type'
-import { AccessLevel } from 'src/users/entities/user.entity'
 import { PaginationInput } from 'src/common/dto/pagination.input'
 import { PaginatedLowStock } from './dto/paginated-low-stock.output'
 import { PaginatedSales } from 'src/sales/dto/paginated-sales.output'
 import { PaginatedTopProducts } from './dto/paginated-top-products.output'
 // import { GraphQLError } from 'graphql'
 import { SalesFilterInput } from './dto/sales-filter.input'
-import { ItemErrorCode } from 'src/items/enums/item-error-code.enum'
+// import { ItemErrorCode } from 'src/items/enums/item-error-code.enum'
 
 @Injectable()
 export class DashboardService {
@@ -74,7 +73,7 @@ export class DashboardService {
 
   async getHomeSummary(
     userId: string,
-    accessLevel: AccessLevel,
+    // accessLevel: AccessLevel,
   ): Promise<DashboardSummary> {
     const now = new Date()
     const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
@@ -180,8 +179,9 @@ export class DashboardService {
       .getRawMany()
 
     // 5. RANKING: TOP 5 MENOS VENDIDOS (Solo PRO)
-    let leastSellingProducts: TopProduct[] = []
-    if (accessLevel === AccessLevel.PRO) {
+    // let leastSellingProducts: TopProduct[] = []
+    const leastSellingProducts: TopProduct[] = []
+    /*if (accessLevel === AccessLevel.PRO) {
       const leastRaw = await this.transRepo
         .createQueryBuilder('t')
         .leftJoin('t.sale', 'sale')
@@ -202,7 +202,7 @@ export class DashboardService {
         name: p.name,
         quantitySold: parseFloat(p.total),
       }))
-    }
+    }*/
 
     // 6. TENDENCIA (Ejecutado en paralelo para ganar velocidad)
     const [countToday, countYesterday] = await Promise.all([
@@ -276,11 +276,35 @@ export class DashboardService {
     const total = parseInt(countResult?.count || '0', 10)
 
     // 3. Obtención de datos paginados
+    // const res = await baseQuery
+    //   .select('item.name', 'name')
+    //   .addSelect('SUM(ABS(t.quantity))', 'total_sold')
+    //   .groupBy('item.id') // Agrupamos por ID para evitar problemas con nombres duplicados
+    //   .addGroupBy('item.name')
+    //   .orderBy('total_sold', 'DESC')
+    //   .limit(pagination.limit)
+    //   .offset(pagination.offset)
+    //   .getRawMany()
+
+    // return {
+    //   items: res.map((p) => ({
+    //     name: p.name,
+
+    //     quantitySold: parseFloat(p.total_sold),
+    //   })),
+    //   total,
+    // }
+
+    // 3. Obtención de datos paginados con id, stock y total_sold
     const res = await baseQuery
-      .select('item.name', 'name')
+      .select('item.id', 'id')
+      .addSelect('item.name', 'name')
+      .addSelect('item.stock', 'stock')
+      .addSelect('item.baseUnit', 'baseUnit')
       .addSelect('SUM(ABS(t.quantity))', 'total_sold')
-      .groupBy('item.id') // Agrupamos por ID para evitar problemas con nombres duplicados
+      .groupBy('item.id')
       .addGroupBy('item.name')
+      .addGroupBy('item.stock')
       .orderBy('total_sold', 'DESC')
       .limit(pagination.limit)
       .offset(pagination.offset)
@@ -288,7 +312,10 @@ export class DashboardService {
 
     return {
       items: res.map((p) => ({
+        id: p.id,
         name: p.name,
+        stock: parseFloat(p.stock),
+        baseUnit: p.baseUnit || 'UNIT',
         quantitySold: parseFloat(p.total_sold),
       })),
       total,
@@ -303,13 +330,8 @@ export class DashboardService {
 
   async getLeastSellingDetailed(
     userId: string,
-    accessLevel: AccessLevel,
     pagination: PaginationInput,
   ): Promise<PaginatedTopProducts> {
-    if (accessLevel !== AccessLevel.PRO) {
-      throw new ForbiddenException(ItemErrorCode.PRO_FEATURE_ONLY)
-    }
-
     const startOfMonth = new Date(
       new Date().getFullYear(),
       new Date().getMonth(),
@@ -333,11 +355,34 @@ export class DashboardService {
     const total = parseInt(countResult?.count || '0', 10)
 
     // Datos paginados (ASC para los menos vendidos)
+    // const res = await baseQuery
+    //   .select('item.name', 'name')
+    //   .addSelect('SUM(ABS(t.quantity))', 'total_sold')
+    //   .groupBy('item.id')
+    //   .addGroupBy('item.name')
+    //   .orderBy('total_sold', 'ASC')
+    //   .limit(pagination.limit)
+    //   .offset(pagination.offset)
+    //   .getRawMany()
+
+    // return {
+    //   items: res.map((p) => ({
+    //     name: p.name,
+    //     quantitySold: parseFloat(p.total_sold),
+    //   })),
+    //   total,
+    // }
+
+    // 🎯 Añadimos id, stock y el nombre mapeados correctamente
     const res = await baseQuery
-      .select('item.name', 'name')
+      .select('item.id', 'id')
+      .addSelect('item.name', 'name')
+      .addSelect('item.stock', 'stock')
+      .addSelect('item.baseUnit', 'baseUnit')
       .addSelect('SUM(ABS(t.quantity))', 'total_sold')
       .groupBy('item.id')
       .addGroupBy('item.name')
+      .addGroupBy('item.stock')
       .orderBy('total_sold', 'ASC')
       .limit(pagination.limit)
       .offset(pagination.offset)
@@ -345,7 +390,10 @@ export class DashboardService {
 
     return {
       items: res.map((p) => ({
+        id: p.id,
         name: p.name,
+        stock: parseFloat(p.stock),
+        baseUnit: p.baseUnit || 'UNIT',
         quantitySold: parseFloat(p.total_sold),
       })),
       total,

@@ -9,6 +9,10 @@ import { PaginatedLowStock } from './dto/paginated-low-stock.output'
 import { PaginatedSales } from 'src/sales/dto/paginated-sales.output'
 import { PaginatedTopProducts } from './dto/paginated-top-products.output'
 import { SalesFilterInput } from './dto/sales-filter.input'
+import { SubscriptionFeatureSlug } from 'src/subscriptions/enums/subscription-feature-slug.enum'
+import { FeatureEntitlementGuard } from 'src/subscriptions/guards/feature-entitlement.guard'
+import { UseGuards } from '@nestjs/common'
+import { RequireFeature } from 'src/common/decorators/require-feature.decorator'
 
 @Resolver()
 export class DashboardResolver {
@@ -16,7 +20,10 @@ export class DashboardResolver {
 
   @Query(() => DashboardSummary, { name: 'getHomeDashboard' })
   async getHomeDashboard(@CurrentUser() user: User) {
-    return this.dashboardService.getHomeSummary(user.id, user.accessLevel)
+    return this.dashboardService.getHomeSummary(
+      user.id,
+      // user.accessLevel
+    )
   }
 
   @Query(() => PaginatedTopProducts, { name: 'getTopSellingDetailed' })
@@ -31,13 +38,14 @@ export class DashboardResolver {
   }
 
   @Query(() => PaginatedTopProducts, { name: 'getLeastSellingDetailed' })
+  @UseGuards(FeatureEntitlementGuard) // 🛡️ Protegido dinámicamente según la DB
+  @RequireFeature(SubscriptionFeatureSlug.ANALYTICS_LEAST_SELLING)
   async getLeastSellingDetailed(
     @CurrentUser() user: User,
     @Args('pagination', { nullable: true }) pagination?: PaginationInput,
   ): Promise<PaginatedTopProducts> {
     return this.dashboardService.getLeastSellingDetailed(
       user.id,
-      user.accessLevel, // Pasamos el nivel de acceso al service
       pagination ?? new PaginationInput(),
     )
   }
