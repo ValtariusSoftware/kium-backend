@@ -45,9 +45,15 @@ export class UsersResolver {
   async updateAccessLevel(
     @Args('input') input: UpdateAccessLevelInput,
     @CurrentUser() user: User, // Obtenemos el ID del token para seguridad
+    @Context() context: any,
   ): Promise<User> {
+    const originClientId = context.req?.headers['x-client-id'] || null
     // Solo el propio usuario (o un admin) puede cambiarse el nivel
-    return this.usersService.changeAccessLevel(user.id, input.level)
+    return this.usersService.changeAccessLevel(
+      user.id,
+      input.level,
+      originClientId,
+    )
   }
 
   // @Mutation(() => Boolean)

@@ -164,7 +164,11 @@ export class UsersService {
     // cubren todas las rutas de la función.
   }
 
-  async changeAccessLevel(userId: string, level: AccessLevel): Promise<User> {
+  async changeAccessLevel(
+    userId: string,
+    level: AccessLevel,
+    originClientId?: string,
+  ): Promise<User> {
     const user = await this.findOneById(userId)
     if (!user) throw new InternalServerErrorException('Usuario no encontrado')
 
@@ -188,10 +192,28 @@ export class UsersService {
       user.subscriptionStartDate = undefined
     }
 
-    // Delegamos la política de catálogo (DEMO destraba igual que PRO/PRO_PLUS)
+    // Delegamos la política de catálogo
     await this.catalogPolicyService.applyPolicyOnAccessChange(user, level)
 
-    return this.usersRepository.save(user)
+    const savedUser = await this.usersRepository.save(user)
+
+    // ⚡ 1. Registrar el evento de sincronización para la entidad USER
+    await this.syncService.registerEvent(
+      userId,
+      EntityType.USER,
+      userId, // El ID del recurso afectado es el propio ID del usuario
+      'UPSERT',
+      originClientId,
+    )
+
+    // ⚡ 2. Notificar a través del WebSocket que el usuario cambió
+    this.syncGateway.notifyEntityUpdated(
+      EntityType.USER,
+      userId,
+      originClientId,
+    )
+
+    return savedUser
   }
 
   /**
