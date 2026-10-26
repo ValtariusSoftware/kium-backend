@@ -367,6 +367,7 @@ type FinancialReportResponse {
   range: RangeDTO!
   canGoBack: Boolean!
   canGoForward: Boolean!
+  hasData: Boolean!
 }
 
 type TransactionHistoryItem {

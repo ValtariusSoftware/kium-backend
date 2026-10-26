@@ -269,6 +269,7 @@ export class InventoryTransactionsService {
         canGoBack: false,
         canGoForward: false,
         range: { start: '', end: '' },
+        hasData: false, // 👈 Informamos que no hay registros históricos
       }
     }
 
@@ -375,6 +376,7 @@ export class InventoryTransactionsService {
         end:
           pageData.length > 0 ? pageData[pageData.length - 1].label.trim() : '',
       },
+      hasData: totalResults > 0, // 👈 Si la base de datos devolvió meses con transacciones, es true
     }
   }
   /**

@@ -40,4 +40,6 @@ export class FinancialReportResponse {
   // 1. Agregamos los campos que faltaban
   @Field(() => Boolean) canGoBack: boolean
   @Field(() => Boolean) canGoForward: boolean
+
+  @Field(() => Boolean) hasData: boolean
 }
