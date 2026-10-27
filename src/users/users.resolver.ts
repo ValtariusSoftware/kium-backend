@@ -47,6 +47,8 @@ export class UsersResolver {
     @CurrentUser() user: User, // Obtenemos el ID del token para seguridad
     @Context() context: any,
   ): Promise<User> {
+    /*console.log('📥 [DEBUG] Input recibido:', input)
+    console.log('👤 [DEBUG] ID de usuario:', user?.id)*/
     const originClientId = context.req?.headers['x-client-id'] || null
     // Solo el propio usuario (o un admin) puede cambiarse el nivel
     return this.usersService.changeAccessLevel(

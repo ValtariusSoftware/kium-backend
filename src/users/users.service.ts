@@ -172,6 +172,11 @@ export class UsersService {
     const user = await this.findOneById(userId)
     if (!user) throw new InternalServerErrorException('Usuario no encontrado')
 
+    // 🛡️ Blindaje anti-error: Si por algo currency es un objeto, extraemos solo el string del código
+    if (user.currency && typeof user.currency === 'object') {
+      user.currency = (user.currency as any).code || 'USD'
+    }
+
     user.accessLevel = level
 
     if (level === AccessLevel.PRO || level === AccessLevel.PRO_PLUS) {
@@ -195,25 +200,43 @@ export class UsersService {
     // Delegamos la política de catálogo
     await this.catalogPolicyService.applyPolicyOnAccessChange(user, level)
 
-    const savedUser = await this.usersRepository.save(user)
+    try {
+      // 🔍 INSPECCIONEMOS QUÉ ESTÁ POR GUARDARSE
+      /*console.log('📦 [DEBUG] Objeto usuario listo para persistir:', {
+        id: user.id,
+        accessLevel: user.accessLevel,
+        subscriptionStatus: user.subscriptionStatus,
+        currency: user.currency, // <- ¿Esto es un objeto o un string mayor a 3 caracteres?
+      })*/
+      const savedUser = await this.usersRepository.save(user)
 
-    // ⚡ 1. Registrar el evento de sincronización para la entidad USER
-    await this.syncService.registerEvent(
-      userId,
-      EntityType.USER,
-      userId, // El ID del recurso afectado es el propio ID del usuario
-      'UPSERT',
-      originClientId,
-    )
+      // ⚡ 1. Registrar el evento de sincronización para la entidad USER
+      await this.syncService.registerEvent(
+        userId,
+        EntityType.USER,
+        userId,
+        'UPSERT',
+        originClientId,
+      )
 
-    // ⚡ 2. Notificar a través del WebSocket que el usuario cambió
-    this.syncGateway.notifyEntityUpdated(
-      EntityType.USER,
-      userId,
-      originClientId,
-    )
+      // ⚡ 2. Notificar a través del WebSocket que el usuario cambió
+      this.syncGateway.notifyEntityUpdated(
+        EntityType.USER,
+        userId,
+        originClientId,
+      )
 
-    return savedUser
+      return savedUser
+    } catch (dbError: any) {
+      console.error('🔥 [ERROR REAL DE POSTGRESQL]:', {
+        message: dbError.message,
+        detail: dbError.detail, // 👈 Acá Postgres te dice la verdad de qué campo falló
+        hint: dbError.hint,
+        table: dbError.table,
+        column: dbError.column,
+      })
+      throw dbError
+    }
   }
 
   /**
