@@ -108,7 +108,7 @@ export const SUBSCRIPTION_PLANS_METADATA: Record<string, PlanMetadata> = {
       fr: 'Pour les commerçants nécessitant une gestion simplifiée.',
       it: 'Per i commercianti che necessitano di una gestione rapida.',
     },
-    priceDisplay: 'ARS 12.499', // 👈 Tu precio informativo listo para pintar
+    priceDisplay: 'ARS 12.999', // 👈 Tu precio informativo listo para pintar
     periodSuffix: {
       es: '/mes',
       en: '/mo',
@@ -138,7 +138,7 @@ export const SUBSCRIPTION_PLANS_METADATA: Record<string, PlanMetadata> = {
       fr: 'Le centre de contrôle intelligent pour analyser votre entreprise.',
       it: 'Il centro di controllo intelligente per analizzare la tua attività.',
     },
-    priceDisplay: 'ARS 18.999', // 👈 Tu precio informativo listo para pintar
+    priceDisplay: 'ARS 19.999', // 👈 Tu precio informativo listo para pintar
     periodSuffix: {
       es: '/mes',
       en: '/mo',
